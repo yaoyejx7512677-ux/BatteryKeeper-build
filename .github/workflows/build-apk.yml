@@ -1,4 +1,4 @@
-name: Build BatteryKeeper 1.5 APK
+name: Build BatteryKeeper 1.5.1 APK
 
 on:
   push:
@@ -31,28 +31,28 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Extract BatteryKeeper source
+      - name: Verify v1.5.1 source
         run: |
-          rm -rf build-src
-          mkdir -p build-src
-          unzip -q BatteryKeeper-v1.5.0-source.zip -d build-src
-          chmod +x build-src/BatteryKeeper-v1.5.0/gradlew
+          grep -q 'versionCode = 10' app/build.gradle.kts
+          grep -q 'versionName = "1.5.1"' app/build.gradle.kts
+          echo "Verified BatteryKeeper v1.5.1 / versionCode 10"
 
       - name: Build Debug APK
-        working-directory: build-src/BatteryKeeper-v1.5.0
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
-
-      - name: Rename APK
         run: |
-          cp build-src/BatteryKeeper-v1.5.0/app/build/outputs/apk/debug/app-debug.apk BatteryKeeper-v1.5.0-debug.apk
-          sha256sum BatteryKeeper-v1.5.0-debug.apk > BatteryKeeper-v1.5.0-debug.apk.sha256
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Rename and checksum APK
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk BatteryKeeper-v1.5.1-debug.apk
+          sha256sum BatteryKeeper-v1.5.1-debug.apk > BatteryKeeper-v1.5.1-debug.apk.sha256
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryKeeper-v1.5.0-APK
+          name: BatteryKeeper-v1.5.1-APK
           path: |
-            BatteryKeeper-v1.5.0-debug.apk
-            BatteryKeeper-v1.5.0-debug.apk.sha256
+            BatteryKeeper-v1.5.1-debug.apk
+            BatteryKeeper-v1.5.1-debug.apk.sha256
           if-no-files-found: error
           retention-days: 30
