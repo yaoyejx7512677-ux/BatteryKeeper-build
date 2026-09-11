@@ -52,7 +52,7 @@ class BatteryMonitorService : Service() {
                 catch (e: Exception) { android.util.Log.e("BatteryKeeper", "Sampling failed", e) }
                 val screenOn = getSystemService(PowerManager::class.java).isInteractive
                 val seconds = when {
-                    previous?.isCharging == true -> settings.chargingIntervalSec
+                    previous?.plugged != 0 -> settings.chargingIntervalSec
                     screenOn -> settings.idleIntervalSec
                     else -> settings.screenOffIntervalSec
                 }

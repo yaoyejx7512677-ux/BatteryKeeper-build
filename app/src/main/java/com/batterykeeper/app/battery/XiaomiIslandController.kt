@@ -15,6 +15,7 @@ import com.batterykeeper.app.MainActivity
 import com.batterykeeper.app.R
 import org.json.JSONObject
 import kotlin.math.abs
+import java.util.Locale
 
 /** Xiaomi HyperOS 原生超级岛控制器。 */
 class XiaomiIslandController(private val context: Context) {
@@ -23,6 +24,7 @@ class XiaomiIslandController(private val context: Context) {
     private var lastPowerW: Float? = null
     private var lastTempC: Float? = null
     private var lastTier: String? = null
+    private var lastPlugged: Int? = null
     private var lastUpdateElapsed = 0L
     private var visible = false
 
@@ -55,13 +57,16 @@ class XiaomiIslandController(private val context: Context) {
 
     fun status() = IslandStatus(protocolVersion(), systemSupportsIsland(), hasFocusPermission())
 
-    /** 充电时创建/更新；非充电时立即下岛。 */
+    /**
+     * 只要仍连接电源就保持超级岛；只有真正拔掉电源时才下岛。
+     * HyperOS 可能在热保护、满充保护、旁路供电等情况下短暂把 status 变为 NOT_CHARGING，
+     * 因此不能用 isCharging 作为岛生命周期条件。
+     */
     fun update(snapshot: BatterySnapshot, tierName: String, force: Boolean = false) {
-        if (!snapshot.isCharging) {
+        if (snapshot.plugged == 0) {
             dismiss()
             return
         }
-        // 非 HyperOS 3 不额外生成一条普通通知。
         if (!systemSupportsIsland()) {
             dismiss()
             return
@@ -70,11 +75,13 @@ class XiaomiIslandController(private val context: Context) {
         val now = android.os.SystemClock.elapsedRealtime()
         val levelChanged = lastLevel != snapshot.level
         val tierChanged = lastTier != tierName
+        val plugChanged = lastPlugged != snapshot.plugged
         val powerChanged = lastPowerW?.let { abs(it - snapshot.powerW) >= 1f } ?: true
-        val tempChanged = lastTempC?.let { abs(it - snapshot.tempC) >= 1f } ?: true
+        val tempChanged = lastTempC?.let { abs(it - snapshot.tempC) >= 0.5f } ?: true
         val intervalPassed = now - lastUpdateElapsed >= MIN_UPDATE_MS
 
-        if (!force && visible && !levelChanged && !tierChanged && !(intervalPassed && (powerChanged || tempChanged))) return
+        if (!force && visible && !levelChanged && !tierChanged && !plugChanged &&
+            !(intervalPassed && (powerChanged || tempChanged))) return
 
         notificationManager.notify(NOTIFICATION_ID, buildNotification(snapshot, tierName))
         visible = true
@@ -82,6 +89,7 @@ class XiaomiIslandController(private val context: Context) {
         lastPowerW = snapshot.powerW
         lastTempC = snapshot.tempC
         lastTier = tierName
+        lastPlugged = snapshot.plugged
         lastUpdateElapsed = now
     }
 
@@ -92,13 +100,14 @@ class XiaomiIslandController(private val context: Context) {
         lastPowerW = null
         lastTempC = null
         lastTier = null
+        lastPlugged = null
         lastUpdateElapsed = 0L
     }
 
     private fun ensureChannel() {
         notificationManager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "原生超级岛", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "充电时通过 Xiaomi HyperOS 原生超级岛显示实时电池状态"
+                description = "连接电源时通过 Xiaomi HyperOS 原生超级岛显示实时电池状态"
                 setSound(null, null)
                 enableVibration(false)
                 setShowBadge(false)
@@ -109,7 +118,9 @@ class XiaomiIslandController(private val context: Context) {
     private fun buildNotification(snapshot: BatterySnapshot, tierName: String): Notification {
         val power = snapshot.powerW.display()
         val temp = if (snapshot.tempC.isFinite()) "%.1f℃".format(snapshot.tempC) else "—℃"
-        val title = tierName.ifBlank { "充电中" }
+        val voltage = if (snapshot.voltageV.isFinite()) "%.2fV".format(snapshot.voltageV) else "—V"
+        val current = if (snapshot.currentA.isFinite()) "%.2fA".format(abs(snapshot.currentA)) else "—A"
+        val title = tierName.ifBlank { snapshot.stateName }
         val ticker = "$title ${snapshot.level}% · $power W"
 
         val openApp = PendingIntent.getActivity(
@@ -130,7 +141,7 @@ class XiaomiIslandController(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_island_battery)
             .setContentTitle("$title · ${snapshot.level}%")
-            .setContentText("电池侧 $power W · $temp")
+            .setContentText("$power W · $temp · $voltage")
             .setContentIntent(openApp)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -140,57 +151,88 @@ class XiaomiIslandController(private val context: Context) {
 
         notification.extras.putString(
             FOCUS_PARAM_KEY,
-            buildIslandJson(title, snapshot.level, "$power W", temp, ticker),
+            buildIslandJson(
+                tierName = title,
+                level = snapshot.level,
+                powerText = "$power W",
+                tempText = temp,
+                voltageText = voltage,
+                currentText = current,
+                ticker = ticker,
+                powerCompact = compactPower(snapshot.powerW),
+                tempCompact = compactTemp(snapshot.tempC),
+            ),
         )
         return notification
     }
 
     /**
-     * 使用小米开发指南公开示例的 imageTextInfoLeft + picInfo 模板结构。
-     * 不添加 actions/hintInfo；点击沿用 Notification.contentIntent，直接进入主界面。
+     * 摘要态：大岛 A 区显示温度，B 区显示功率；小岛保留电池图标兜底。
+     * 展开态：baseInfo 展示充电档位、电量、功率、温度、电压、电流。
+     * 不添加按钮。HyperOS 原生交互为：点击摘要态 -> 展开态，再点击展开态 -> contentIntent 打开主界面。
      */
     private fun buildIslandJson(
         tierName: String,
         level: Int,
         powerText: String,
         tempText: String,
+        voltageText: String,
+        currentText: String,
         ticker: String,
+        powerCompact: String,
+        tempCompact: String,
     ): String {
-        val picInfo = JSONObject().put("type", 1).put("pic", PIC_BATTERY)
-        val textInfo = JSONObject()
-            .put("frontTitle", tierName)
-            .put("title", "$level%")
-            .put("content", "$powerText · $tempText")
+        // 大岛 A 区：温度。图文组件1允许不传图标，只用大字。
+        val leftTextInfo = JSONObject()
+            .put("title", tempCompact)
+            .put("content", "温度")
+            .put("narrowFont", true)
+            .put("useHighLight", false)
+
+        val leftArea = JSONObject()
+            .put("type", 1)
+            .put("miui.focus.paramtextInfo", leftTextInfo)
+
+        // 大岛 B 区：使用纯文本组件，显示实时功率。
+        val rightTextInfo = JSONObject()
+            .put("title", powerCompact)
+            .put("content", "功率")
+            .put("narrowFont", true)
             .put("useHighLight", false)
 
         val bigIslandArea = JSONObject()
-            .put(
-                "imageTextInfoLeft",
-                JSONObject()
-                    .put("type", 1)
-                    .put("picInfo", JSONObject(picInfo.toString()))
-                    .put("miui.focus.paramtextInfo", textInfo),
-            )
-            .put("picInfo", JSONObject(picInfo.toString()))
+            .put("imageTextInfoLeft", leftArea)
+            .put("textInfo", rightTextInfo)
 
-        val smallIslandArea = JSONObject().put("picInfo", JSONObject(picInfo.toString()))
+        // 当系统把大岛压缩成小岛时，至少仍显示 BatteryKeeper 电池图标。
+        val smallIslandArea = JSONObject().put(
+            "picInfo",
+            JSONObject().put("type", 1).put("pic", PIC_BATTERY),
+        )
 
         val paramIsland = JSONObject()
             .put("islandProperty", 1)
+            .put("islandOrder", true)
             .put("islandTimeout", ISLAND_TIMEOUT_SEC)
+            .put("dismissIsland", false)
             .put("bigIslandArea", bigIslandArea)
             .put("smallIslandArea", smallIslandArea)
 
         val baseInfo = JSONObject()
-            .put("title", "$tierName · $level%")
-            .put("content", "$powerText · $tempText")
             .put("type", 2)
+            .put("title", "$tierName · $level%")
+            .put("subTitle", tempText)
+            .put("content", powerText)
+            .put("subContent", "$voltageText · $currentText")
+            .put("showDivider", true)
+            .put("showContentDivider", true)
 
         val paramV2 = JSONObject()
             .put("protocol", 1)
             .put("business", BUSINESS)
             .put("islandFirstFloat", false)
             .put("enableFloat", false)
+            .put("timeout", NOTIFICATION_TIMEOUT_MIN)
             .put("updatable", true)
             .put("reopen", "reopen")
             .put("filterWhenNoPermission", true)
@@ -201,6 +243,12 @@ class XiaomiIslandController(private val context: Context) {
 
         return JSONObject().put("param_v2", paramV2).toString()
     }
+
+    private fun compactTemp(tempC: Float): String =
+        if (tempC.isFinite()) String.format(Locale.US, "%.1f℃", tempC) else "—℃"
+
+    private fun compactPower(powerW: Float): String =
+        if (powerW.isFinite()) String.format(Locale.US, "%.1fW", abs(powerW)) else "—W"
 
     data class IslandStatus(
         val protocolVersion: Int,
@@ -214,7 +262,9 @@ class XiaomiIslandController(private val context: Context) {
         private const val FOCUS_PARAM_KEY = "miui.focus.param"
         private const val PIC_BATTERY = "miui.focus.pic_batterykeeper"
         private const val BUSINESS = "battery_charging"
-        private const val MIN_UPDATE_MS = 4_000L
+        private const val MIN_UPDATE_MS = 5_000L
+        // 小米准入原则要求单次服务生命周期不超过 12 小时。
+        private const val NOTIFICATION_TIMEOUT_MIN = 12 * 60
         private const val ISLAND_TIMEOUT_SEC = 12 * 60 * 60
     }
 }
