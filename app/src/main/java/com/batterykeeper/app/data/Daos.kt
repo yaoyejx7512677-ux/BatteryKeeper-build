@@ -103,6 +103,9 @@ interface HealthReportDao {
     @Query("SELECT * FROM health_reports ORDER BY timestamp ASC")
     fun all(): Flow<List<HealthReport>>
 
+    @Query("SELECT * FROM health_reports ORDER BY timestamp ASC")
+    suspend fun snapshot(): List<HealthReport>
+
     @Query("SELECT * FROM health_reports ORDER BY timestamp DESC LIMIT 1")
     suspend fun latest(): HealthReport?
 
