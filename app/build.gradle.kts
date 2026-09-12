@@ -22,8 +22,8 @@ android {
         applicationId = "com.batterykeeper.app"
         minSdk = 34
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.5.4"
+        versionCode = 15
+        versionName = "1.5.5"
 
         // 仅打包 arm64（小米17 及所有现代旗舰均为 arm64），ML Kit OCR so 从 4 个 ABI 减到 1 个，体积约降 2/3
         ndk {
