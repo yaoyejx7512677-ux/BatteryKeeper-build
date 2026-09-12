@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -26,7 +25,6 @@ import com.batterykeeper.app.ui.components.CardTitle
 import com.batterykeeper.app.ui.components.GlassCard
 import com.batterykeeper.app.ui.components.LiveLineChart
 import com.batterykeeper.app.ui.components.MetricCompact
-import com.batterykeeper.app.ui.components.PowerBar
 import com.batterykeeper.app.ui.components.StatusDot
 import com.batterykeeper.app.ui.theme.Green
 import com.batterykeeper.app.ui.theme.Orange
@@ -53,11 +51,7 @@ fun PowerScreen(vm: BatteryViewModel) {
         }
     }
 
-    Column(
-        Modifier
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
-    ) {
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
         Row(
             Modifier.fillMaxWidth().padding(vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -65,41 +59,21 @@ fun PowerScreen(vm: BatteryViewModel) {
         ) {
             Column {
                 Text("实时功率", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    "采样频率 ${vm.settings.chargingIntervalSec} 秒 · 前台实时监测",
-                    fontSize = 11.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 3.dp),
-                )
+                Text("采样频率 ${vm.settings.chargingIntervalSec} 秒 · 前台实时监测", fontSize = 11.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 3.dp))
             }
             StatusDot(if (s == null) "监测未运行" else "监测中", active = s?.isCharging == true)
         }
 
-        // 功率大屏
         GlassCard {
-            Column(
-                Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    if (s?.isCharging == true) "▲ 充电中 · ${protocol.displayName}"
-                    else s?.stateName ?: "等待监测数据",
-                    fontSize = 12.sp, color = TxtSecondary,
-                )
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (s?.isCharging == true) "▲ 充电中 · ${protocol.displayName}" else s?.stateName ?: "等待监测数据", fontSize = 12.sp, color = TxtSecondary)
                 Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 4.dp)) {
-                    Text(
-                        s?.powerW?.display() ?: "—",
-                        fontSize = 60.sp, fontWeight = FontWeight.ExtraBold,
-                        color = if (s?.isCharging == true) Orange else Green,
-                    )
-                    Text(
-                        " W", fontSize = 20.sp, color = TxtSecondary, fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(bottom = 10.dp),
-                    )
+                    Text(s?.powerW?.display() ?: "—", fontSize = 60.sp, fontWeight = FontWeight.ExtraBold, color = if (s?.isCharging == true) Orange else Green)
+                    Text(" W", fontSize = 20.sp, color = TxtSecondary, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 10.dp))
                 }
-                Text("电池侧功率估算 · 非充电器输出功率 · ${s?.pluggedName ?: "—"}", fontSize = 12.sp, color = TxtSecondary)
             }
         }
 
-        // 实时曲线
         GlassCard(Modifier.padding(top = 14.dp)) {
             CardTitle("功率曲线 · 近 10 分钟")
             Spacer(Modifier.height(10.dp))
@@ -112,19 +86,14 @@ fun PowerScreen(vm: BatteryViewModel) {
             )
         }
 
-        // 三联指标
         GlassCard(Modifier.padding(top = 14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 MetricCompact(s?.currentA?.display(2) ?: "—", "A", "电流")
                 MetricCompact(s?.voltageV?.display(2) ?: "—", "V", "电压")
-                MetricCompact(
-                    s?.tempC?.display() ?: "—", "℃", "电池温度",
-                    valueColor = if ((s?.tempC ?: 0f) > 45f) Color(0xFFF87171) else Color.White,
-                )
+                MetricCompact(s?.tempC?.display() ?: "—", "℃", "电池温度", valueColor = if ((s?.tempC ?: 0f) > 45f) Color(0xFFF87171) else Color.White)
             }
         }
 
-        // 本次充电会话
         val sess = session
         GlassCard(Modifier.padding(top = 14.dp)) {
             CardTitle("本次充电会话", badge = if (sess != null) "进行中" else "未充电")
@@ -132,10 +101,7 @@ fun PowerScreen(vm: BatteryViewModel) {
             if (sess != null) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(sess.startTime)),
-                            fontSize = 17.sp, fontWeight = FontWeight.Bold,
-                        )
+                        Text(SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(sess.startTime)), fontSize = 17.sp, fontWeight = FontWeight.Bold)
                         Text("开始时间", fontSize = 10.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 2.dp))
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -147,29 +113,20 @@ fun PowerScreen(vm: BatteryViewModel) {
                         Text("平均功率 W", fontSize = 10.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 2.dp))
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            "%.1f".format(sess.peakPowerW),
-                            fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Orange,
-                        )
+                        Text("%.1f".format(sess.peakPowerW), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Orange)
                         Text("峰值功率 W", fontSize = 10.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 2.dp))
                     }
                 }
-            } else {
-                Text(
-                    "未在充电中。插入充电器后此处显示本次充电的实时统计。",
-                    fontSize = 12.sp, color = TxtSecondary,
-                )
             }
         }
+
         GlassCard(Modifier.padding(top = 14.dp)) {
             CardTitle("最近充电记录")
             val completed=history.filter { it.startTime != session?.startTime }.take(10)
-            if(completed.isEmpty()) Text("完成一次充电后显示记录。",color=TxtSecondary,modifier=Modifier.padding(top=12.dp))
             completed.forEach { item ->
                 Column(Modifier.fillMaxWidth().padding(vertical=12.dp)) {
                     Text(BatteryViewModel.fmtDate(item.startTime),fontSize=14.sp,fontWeight=FontWeight.SemiBold)
                     Text("${item.startLevel}% → ${item.endLevel ?: "—"}% · ${item.energyMah} mAh · 峰值 ${item.peakPowerW.display()} W",fontSize=12.sp,color=TxtSecondary)
-                    if(item.protocol=="记录至最近采样") Text("监测中断或服务关闭前的保存记录",fontSize=11.sp,color=TxtTertiary)
                 }
             }
         }
