@@ -1,4 +1,4 @@
-name: Build BatteryKeeper 1.5.4 Fixed-Signed APK
+name: Build BatteryKeeper 1.5.5 Fixed-Signed APK
 
 on:
   push:
@@ -31,10 +31,10 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Verify v1.5.4 source
+      - name: Verify v1.5.5 source
         run: |
-          grep -q 'versionCode = 13' app/build.gradle.kts
-          grep -q 'versionName = "1.5.4"' app/build.gradle.kts
+          grep -q 'versionCode = 15' app/build.gradle.kts
+          grep -q 'versionName = "1.5.5"' app/build.gradle.kts
           grep -q 'FOREGROUND_NOTIFICATION_ID = 1' app/src/main/java/com/batterykeeper/app/battery/BatteryMonitorService.kt
           grep -q 'const val NOTIFICATION_ID = 1' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
           grep -q 'MIN_UPDATE_MS = 10_000L' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
@@ -42,7 +42,10 @@ jobs:
           grep -q '通知缺失恢复' app/src/main/java/com/batterykeeper/app/ui/screens/SettingsScreen.kt
           grep -q 'HyperOS 3/4 / AIDL Health' app/src/main/java/com/batterykeeper/app/report/ReportImport.kt
           grep -q 'abs(s.powerW)' app/src/main/java/com/batterykeeper/app/battery/BatteryMonitorService.kt
-          echo 'Verified BatteryKeeper v1.5.4 source'
+          grep -q '热爱生活·为您充电！' app/src/main/java/com/batterykeeper/app/ui/screens/DashboardScreen.kt
+          grep -q 'PickVisualMedia' app/src/main/java/com/batterykeeper/app/ui/screens/ReportsScreen.kt
+          grep -q 'findLatestBugReport' app/src/main/java/com/batterykeeper/app/report/ReportFileLocator.kt
+          echo 'Verified BatteryKeeper v1.5.5 source'
 
       - name: Prepare permanent signing key
         env:
@@ -75,15 +78,15 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           $ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs "$APK"
           $ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK" | head -1
-          cp "$APK" BatteryKeeper-v1.5.4-fixed-debug.apk
-          sha256sum BatteryKeeper-v1.5.4-fixed-debug.apk > BatteryKeeper-v1.5.4-fixed-debug.apk.sha256
+          cp "$APK" BatteryKeeper-v1.5.5-fixed-debug.apk
+          sha256sum BatteryKeeper-v1.5.5-fixed-debug.apk > BatteryKeeper-v1.5.5-fixed-debug.apk.sha256
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryKeeper-v1.5.4-Fixed-Signed-APK
+          name: BatteryKeeper-v1.5.5-Fixed-Signed-APK
           path: |
-            BatteryKeeper-v1.5.4-fixed-debug.apk
-            BatteryKeeper-v1.5.4-fixed-debug.apk.sha256
+            BatteryKeeper-v1.5.5-fixed-debug.apk
+            BatteryKeeper-v1.5.5-fixed-debug.apk.sha256
           if-no-files-found: error
           retention-days: 30
