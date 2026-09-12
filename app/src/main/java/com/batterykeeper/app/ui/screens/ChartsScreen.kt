@@ -34,7 +34,6 @@ fun ChartsScreen(vm: BatteryViewModel) {
                 val raw=vm.samplesBetween(from-120000,to)
                 val result=HistoryMath.summarize(raw.map {
                     HistoryMath.Point(it.timestamp,it.currentA.toDouble(),it.powerW.toDouble(),it.tempC.toDouble()) },from,to)
-                // Keep boundaries and power/temperature extrema in each bucket.
                 val visible=raw.filter { it.timestamp >= from }
                 val reduced=visible.chunked((visible.size/100).coerceAtLeast(1)).flatMap { chunk ->
                     listOf(chunk.first(),chunk.minBy { it.powerW },chunk.maxBy { it.powerW },
@@ -78,8 +77,6 @@ fun ChartsScreen(vm: BatteryViewModel) {
                 MetricCompact(summary?.avgDrainW?.let { "%.1f".format(it) } ?: "—","W","平均放电")
                 MetricCompact(summary?.drainShare?.let { "%.0f".format(it) } ?: "—","%","放电时长占比")
             }
-            Spacer(Modifier.height(12.dp))
-            Text("有效记录 %.1f 小时；均值按时长加权，采样空缺不计入。".format((summary?.coverageMs ?: 0)/3600000.0),fontSize=12.sp,color=TxtSecondary)
         }
     }
 }
