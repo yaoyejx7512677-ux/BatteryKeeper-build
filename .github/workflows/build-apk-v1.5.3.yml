@@ -1,4 +1,4 @@
-name: Build BatteryKeeper 1.5.3 Fixed-Signed APK
+name: Build BatteryKeeper 1.5.4 Fixed-Signed APK
 
 on:
   push:
@@ -31,15 +31,18 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
-      - name: Verify v1.5.3 source
+      - name: Verify v1.5.4 source
         run: |
-          grep -q 'versionCode = 12' app/build.gradle.kts
-          grep -q 'versionName = "1.5.3"' app/build.gradle.kts
+          grep -q 'versionCode = 13' app/build.gradle.kts
+          grep -q 'versionName = "1.5.4"' app/build.gradle.kts
           grep -q 'FOREGROUND_NOTIFICATION_ID = 1' app/src/main/java/com/batterykeeper/app/battery/BatteryMonitorService.kt
           grep -q 'const val NOTIFICATION_ID = 1' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
-          grep -q '超级岛诊断' app/src/main/java/com/batterykeeper/app/ui/screens/SettingsScreen.kt
-          grep -q 'islandRecoveryCount' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
-          echo 'Verified BatteryKeeper v1.5.3 diagnostics source'
+          grep -q 'MIN_UPDATE_MS = 10_000L' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
+          grep -q 'POWER_DELTA_W = 3f' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
+          grep -q '通知缺失恢复' app/src/main/java/com/batterykeeper/app/ui/screens/SettingsScreen.kt
+          grep -q 'HyperOS 3/4 / AIDL Health' app/src/main/java/com/batterykeeper/app/report/ReportImport.kt
+          grep -q 'abs(s.powerW)' app/src/main/java/com/batterykeeper/app/battery/BatteryMonitorService.kt
+          echo 'Verified BatteryKeeper v1.5.4 source'
 
       - name: Prepare permanent signing key
         env:
@@ -54,12 +57,12 @@ jobs:
           test -n "$KEY_PASSWORD" || { echo 'Missing BATTERYKEEPER_KEY_PASSWORD'; exit 1; }
           mkdir -p signing
           printf '%s' "$KEYSTORE_B64" | base64 --decode > signing/batterykeeper-fixed.jks
-          cat > keystore.properties <<EOF
+          cat > keystore.properties <<EOF2
           storeFile=signing/batterykeeper-fixed.jks
           storePassword=$STORE_PASSWORD
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
-          EOF
+          EOF2
           keytool -list -v -keystore signing/batterykeeper-fixed.jks -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" | grep 'SHA256:'
 
       - name: Build fixed-signed Debug APK
@@ -72,15 +75,15 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           $ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs "$APK"
           $ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK" | head -1
-          cp "$APK" BatteryKeeper-v1.5.3-fixed-debug.apk
-          sha256sum BatteryKeeper-v1.5.3-fixed-debug.apk > BatteryKeeper-v1.5.3-fixed-debug.apk.sha256
+          cp "$APK" BatteryKeeper-v1.5.4-fixed-debug.apk
+          sha256sum BatteryKeeper-v1.5.4-fixed-debug.apk > BatteryKeeper-v1.5.4-fixed-debug.apk.sha256
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BatteryKeeper-v1.5.3-Fixed-Signed-APK
+          name: BatteryKeeper-v1.5.4-Fixed-Signed-APK
           path: |
-            BatteryKeeper-v1.5.3-fixed-debug.apk
-            BatteryKeeper-v1.5.3-fixed-debug.apk.sha256
+            BatteryKeeper-v1.5.4-fixed-debug.apk
+            BatteryKeeper-v1.5.4-fixed-debug.apk.sha256
           if-no-files-found: error
           retention-days: 30
