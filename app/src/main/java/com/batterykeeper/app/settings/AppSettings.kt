@@ -44,26 +44,26 @@ class AppSettings(context: Context) {
         get() = if (prefs.contains(KEY_NATIVE_ISLAND_ENABLED)) {
             prefs.getBoolean(KEY_NATIVE_ISLAND_ENABLED, true)
         } else {
-            // v1.4 用户如果曾开启旧悬浮岛，升级后自动沿用为“原生超级岛开启”。
-            // 全新安装默认开启，由系统能力/小米授权决定是否真正上岛。
             prefs.getBoolean(KEY_OVERLAY_ENABLED_LEGACY, true)
         }
         set(v) = prefs.edit().putBoolean(KEY_NATIVE_ISLAND_ENABLED, v).apply()
 
-    /** 自算循环次数（系统不上报循环数时的降级方案） */
     var selfCycleCount: Int
         get() = prefs.getInt(KEY_SELF_CYCLES, 0)
         set(v) = prefs.edit().putInt(KEY_SELF_CYCLES, v).apply()
 
-    /** 自算累计放电量 mAh（未满一循环的余数） */
     var selfDischargedMah: Int
         get() = prefs.getInt(KEY_SELF_DISCHARGED, 0)
         set(v) = prefs.edit().putInt(KEY_SELF_DISCHARGED, v).apply()
 
-    /** 上次报告导入的文件位置（文件选择器记住位置用） */
     var lastImportUri: String
         get() = prefs.getString(KEY_LAST_IMPORT_URI, "") ?: ""
         set(v) = prefs.edit().putString(KEY_LAST_IMPORT_URI, v).apply()
+
+    /** 已授权的系统错误报告目录（SAF tree URI），用于一键查找最新 Bugreport。 */
+    var reportFolderUri: String
+        get() = prefs.getString(KEY_REPORT_FOLDER_URI, "") ?: ""
+        set(v) = prefs.edit().putString(KEY_REPORT_FOLDER_URI, v).apply()
 
     var dischargedRemainder: Float
         get() = prefs.getFloat("discharged_remainder", selfDischargedMah.toFloat())
@@ -75,22 +75,18 @@ class AppSettings(context: Context) {
         get() = prefs.getLong("full_charge_time", 0)
         set(v) = prefs.edit().putLong("full_charge_time", v).apply()
 
-    /** 监测服务最近一次采样/心跳的墙钟时间（ms） */
     var monitorHeartbeatTime: Long
         get() = prefs.getLong(KEY_MONITOR_HEARTBEAT, 0L)
         set(v) = prefs.edit().putLong(KEY_MONITOR_HEARTBEAT, v).apply()
 
-    /** 监测服务本次启动时间（ms） */
     var monitorServiceStartedAt: Long
         get() = prefs.getLong(KEY_MONITOR_STARTED, 0L)
         set(v) = prefs.edit().putLong(KEY_MONITOR_STARTED, v).apply()
 
-    /** 监测服务最近停止时间（ms） */
     var monitorServiceStoppedAt: Long
         get() = prefs.getLong(KEY_MONITOR_STOPPED, 0L)
         set(v) = prefs.edit().putLong(KEY_MONITOR_STOPPED, v).apply()
 
-    /** 最近采样时的 plugged/status，供超级岛诊断显示 */
     var monitorLastPlugged: Int
         get() = prefs.getInt(KEY_MONITOR_LAST_PLUGGED, 0)
         set(v) = prefs.edit().putInt(KEY_MONITOR_LAST_PLUGGED, v).apply()
@@ -99,7 +95,6 @@ class AppSettings(context: Context) {
         get() = prefs.getInt(KEY_MONITOR_LAST_STATUS, 0)
         set(v) = prefs.edit().putInt(KEY_MONITOR_LAST_STATUS, v).apply()
 
-    /** 超级岛最近一次 notify(统一通知 #1) 的时间、原因和累计次数 */
     var islandLastPostTime: Long
         get() = prefs.getLong(KEY_ISLAND_LAST_POST, 0L)
         set(v) = prefs.edit().putLong(KEY_ISLAND_LAST_POST, v).apply()
@@ -116,7 +111,6 @@ class AppSettings(context: Context) {
         get() = prefs.getInt(KEY_ISLAND_RECOVERY_COUNT, 0)
         set(v) = prefs.edit().putInt(KEY_ISLAND_RECOVERY_COUNT, v).apply()
 
-    /** BatteryKeeper 主动退出岛状态 的最近时间和原因。 */
     var islandLastDismissTime: Long
         get() = prefs.getLong(KEY_ISLAND_LAST_DISMISS, 0L)
         set(v) = prefs.edit().putLong(KEY_ISLAND_LAST_DISMISS, v).apply()
@@ -137,6 +131,7 @@ class AppSettings(context: Context) {
         const val KEY_SELF_CYCLES = "self_cycles"
         const val KEY_SELF_DISCHARGED = "self_discharged"
         const val KEY_LAST_IMPORT_URI = "last_import_uri"
+        const val KEY_REPORT_FOLDER_URI = "report_folder_uri"
 
         const val KEY_MONITOR_HEARTBEAT = "diag_monitor_heartbeat"
         const val KEY_MONITOR_STARTED = "diag_monitor_started"
