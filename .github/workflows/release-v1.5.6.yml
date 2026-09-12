@@ -1,0 +1,131 @@
+name: Publish BatteryKeeper 1.5.6
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - '.github/workflows/release-v1.5.6.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Skip if v1.5.6 already published
+        id: release_state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v1.5.6 >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            echo 'v1.5.6 already exists; nothing to republish.'
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 17
+        if: steps.release_state.outputs.exists != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        if: steps.release_state.outputs.exists != 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        if: steps.release_state.outputs.exists != 'true'
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Prepare permanent signing key
+        if: steps.release_state.outputs.exists != 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.BATTERYKEEPER_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.BATTERYKEEPER_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.BATTERYKEEPER_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.BATTERYKEEPER_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_B64"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          mkdir -p signing
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > signing/batterykeeper-fixed.jks
+          cat > keystore.properties <<EOF2
+          storeFile=signing/batterykeeper-fixed.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF2
+
+      - name: Build formal Release
+        if: steps.release_state.outputs.exists != 'true'
+        run: |
+          grep -q 'versionCode = 16' app/build.gradle.kts
+          grep -q 'versionName = "1.5.6"' app/build.gradle.kts
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace clean assembleRelease bundleRelease
+
+      - name: Verify and prepare files
+        if: steps.release_state.outputs.exists != 'true'
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          BADGING="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK" | head -40)"
+          echo "$BADGING" | grep -q "package: name='com.batterykeeper.app' versionCode='16' versionName='1.5.6'"
+          if echo "$BADGING" | grep -q 'application-debuggable'; then
+            echo 'Refusing to publish debuggable APK'
+            exit 1
+          fi
+          $ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs "$APK"
+          if unzip -l "$APK" | grep -q 'Hani_ctc'; then
+            echo 'ERROR: Chinese OCR model is still packaged'
+            exit 1
+          fi
+          APK_BYTES=$(stat -c%s "$APK")
+          echo "Release APK bytes: $APK_BYTES"
+          if [ "$APK_BYTES" -gt $((45 * 1024 * 1024)) ]; then
+            echo 'ERROR: Release APK exceeds 45 MiB size budget'
+            exit 1
+          fi
+          cp "$APK" BatteryKeeper-v1.5.6-release.apk
+          cp "$AAB" BatteryKeeper-v1.5.6-release.aab
+          sha256sum BatteryKeeper-v1.5.6-release.apk BatteryKeeper-v1.5.6-release.aab > BatteryKeeper-v1.5.6-SHA256SUMS.txt
+          cat > RELEASE_NOTES.md <<'EOF2'
+          ## BatteryKeeper 1.5.6
+
+          正式 Release 构建，面向 HyperOS / 小米设备。
+
+          - 改为正式 `release` 构建，`debuggable=false`，启用 R8 和资源压缩。
+          - OCR 从大型中文模型切换为轻量离线 Latin 模型，降低安装包体积，仍不依赖 Google Play Services。
+          - 重写图片历史报告识别：按 OCR 坐标和日期行关联健康度、满充容量、循环次数与系统版本，修复跨行串值。
+          - 增加 HyperOS 系统版本识别：截图、Bugreport 和当前设备均可识别 OS3 / OS4 版本。
+          - 保留 HyperOS 3 / HyperOS 4 Bugreport 多来源解析、相册导入和自动查找最新错误报告。
+
+          APK 用于小米等 Android 商店/直接安装；AAB 用于支持 Android App Bundle 的商店。
+          EOF2
+
+      - name: Publish GitHub Release
+        if: steps.release_state.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.5.6 \
+            BatteryKeeper-v1.5.6-release.apk \
+            BatteryKeeper-v1.5.6-release.aab \
+            BatteryKeeper-v1.5.6-SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title 'BatteryKeeper 1.5.6' \
+            --notes-file RELEASE_NOTES.md
