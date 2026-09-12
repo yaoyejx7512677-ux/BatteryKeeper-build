@@ -29,7 +29,7 @@ fun DashboardScreen(vm: BatteryViewModel) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
             Column {
                 Text("电池管家",fontSize=28.sp,fontWeight=FontWeight.Bold)
-                Text("看清每一次充放电",fontSize=13.sp,color=TxtSecondary,modifier=Modifier.padding(top=5.dp))
+                Text("热爱生活·为您充电！",fontSize=13.sp,color=TxtSecondary,modifier=Modifier.padding(top=5.dp))
             }
             StatusDot(if(s==null) "监测未运行" else "监测中",s!=null)
         }
@@ -49,8 +49,6 @@ fun DashboardScreen(vm: BatteryViewModel) {
                 MetricCompact(s?.voltageV?.display(2) ?: "—","V","电压")
                 MetricCompact(s?.currentA?.display(2) ?: "—","A","电流幅值")
             }
-            Spacer(Modifier.height(14.dp))
-            Text("${s?.pluggedName ?: "开启监测后显示实时数据"} · 功率按电池电流与电压估算",fontSize=12.sp,color=TxtSecondary)
         }
         GlassCard {
             CardTitle(if(session!=null) "本次充电" else "今日充电记录",badge=if(session!=null) "进行中" else "已完成")
@@ -60,8 +58,6 @@ fun DashboardScreen(vm: BatteryViewModel) {
                 if(session!=null) MetricCompact(session!!.peakPowerW.display(),"W","峰值功率")
                 else MetricCompact(today.sessions.toString(),"次","充电记录")
             }
-            Spacer(Modifier.height(12.dp))
-            Text("仅统计监测覆盖时段，退出或系统中断可能分成多条记录。",fontSize=12.sp,color=TxtSecondary)
         }
         GlassCard {
             CardTitle("电池健康",badge=if(report!=null) "报告值" else if(health!=null) "满充估算" else "暂无数据")
@@ -74,11 +70,11 @@ fun DashboardScreen(vm: BatteryViewModel) {
                 Column {
                     val capacity=report?.fullChargeMah?.takeIf { it>0 } ?: vm.settings.fullChargeMah.takeIf { it>0 }
                     Text(capacity?.let { "$it mAh" } ?: "等待容量数据",fontSize=20.sp,fontWeight=FontWeight.SemiBold)
-                    Text("满充容量 · 非当前剩余电量",fontSize=12.sp,color=TxtSecondary)
+                    Text("满充容量",fontSize=12.sp,color=TxtSecondary)
                 }
             }
             val timestamp=report?.timestamp ?: vm.settings.fullChargeTime
-            Text(if(timestamp>0) "${if(report!=null) "检测报告" else "满充估算"} · ${BatteryViewModel.fmtDate(timestamp)}" else "在报表页导入系统报告，或保持监测至满充以尝试估算。",fontSize=12.sp,color=TxtSecondary)
+            if (timestamp>0) Text(BatteryViewModel.fmtDate(timestamp),fontSize=12.sp,color=TxtSecondary)
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                 MetricCompact((report?.designMah?.takeIf { it>0 } ?: vm.settings.designCapacityMah).toString(),"mAh","设计容量")
