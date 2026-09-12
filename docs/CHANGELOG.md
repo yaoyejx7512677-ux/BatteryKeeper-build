@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.5.4 — 2026-09-12
+
+- 超级岛普通刷新降至 10 秒；功率变化 ≥ 3W 或温度变化 ≥ 1℃ 时允许提前刷新，电量/插拔/状态变化立即刷新。
+- 只有统一通知 #1 真正不存在时才自动恢复，不再因为焦点 extras 瞬时读取不到而高频补发。
+- 设置页诊断拆分为 BatteryKeeper 应用侧与 HyperOS/SystemUI 两层，并明确个人自用、未配置 App ID 时无法保证视觉层长期常驻。
+- 修复部分 Xiaomi 内核 `CURRENT_NOW` 充电符号相反导致本次充电的已充入、平均功率、峰值功率长期为 0；内部功率方向统一为充电正、放电负。
+- 充电协议分档改用功率幅值，避免负号导致快充错误识别为普通充电。
+- Bugreport ZIP 导入升级为 HyperOS 3/4 多来源解析：AIDL HealthInfo > Health HAL > POWER_SUPPLY_* > batterystats，并统一 uAh/mAh。
+- 报告导入预览与历史记录显示解析格式、字段来源和置信度。
+- 版本升级至 1.5.4 / versionCode 13，沿用 v1.5.3 固定签名 Secrets 与单通知 #1 架构。
+
 ## v1.5.0 — 2026-09-12
 
 - 移除 v1.4 `TYPE_APPLICATION_OVERLAY` 仿超级岛和 `SYSTEM_ALERT_WINDOW` 权限。

@@ -109,19 +109,24 @@ class XiaomiIslandController(private val context: Context) {
         val levelChanged = lastLevel != snapshot.level
         val tierChanged = lastTier != tierName
         val plugChanged = lastPlugged != snapshot.plugged
-        val powerChanged = lastPowerW?.let { abs(it - snapshot.powerW) >= 1f } ?: true
-        val tempChanged = lastTempC?.let { abs(it - snapshot.tempC) >= 0.5f } ?: true
-        val intervalPassed = now - lastUpdateElapsed >= MIN_UPDATE_MS
-        val focusPayloadActive = activeNotificationHasFocusPayload()
-        val recoveringMissingNotification = visible && !focusPayloadActive
+        val powerChanged = lastPowerW?.let { abs(it - snapshot.powerW) >= POWER_DELTA_W } ?: true
+        val tempChanged = lastTempC?.let { abs(it - snapshot.tempC) >= TEMP_DELTA_C } ?: true
+        val sinceLastUpdate = now - lastUpdateElapsed
+        val intervalPassed = sinceLastUpdate >= MIN_UPDATE_MS
+        val significantTelemetryChange = powerChanged || tempChanged
+        val earlyTelemetryRefresh = significantTelemetryChange && sinceLastUpdate >= EARLY_UPDATE_MIN_MS
+        val notificationActive = isNotificationActive(NOTIFICATION_ID)
+        // v1.5.4：只在统一通知 #1 真正消失时自动恢复。NotificationManager 对 extras 的
+        // 瞬时查询失败不再触发补发，避免高频重投递被 SystemUI 限流/降级。
+        val recoveringMissingNotification = visible && !notificationActive
 
         if (!force && visible && !recoveringMissingNotification && !levelChanged && !tierChanged && !plugChanged &&
-            !(intervalPassed && (powerChanged || tempChanged))) return true
+            !intervalPassed && !earlyTelemetryRefresh) return true
 
         notificationManager.notify(NOTIFICATION_ID, buildNotification(snapshot, tierName))
         settings.islandLastPostTime = System.currentTimeMillis()
         settings.islandLastPostReason = when {
-            recoveringMissingNotification -> "检测到统一通知丢失焦点参数，自动补发"
+            recoveringMissingNotification -> "检测到统一通知 #1 不存在，自动恢复"
             force -> "电源/状态变化，强制更新"
             !visible -> "首次上岛"
             else -> "温度/功率更新"
@@ -368,7 +373,10 @@ class XiaomiIslandController(private val context: Context) {
         private const val FOCUS_PARAM_KEY = "miui.focus.param"
         private const val PIC_BATTERY = "miui.focus.pic_batterykeeper"
         private const val BUSINESS = "battery_charging"
-        private const val MIN_UPDATE_MS = 5_000L
+        private const val MIN_UPDATE_MS = 10_000L
+        private const val EARLY_UPDATE_MIN_MS = 3_000L
+        private const val POWER_DELTA_W = 3f
+        private const val TEMP_DELTA_C = 1f
         private const val HEARTBEAT_STALE_MS = 90_000L
         // 小米准入原则要求单次服务生命周期不超过 12 小时。
         private const val NOTIFICATION_TIMEOUT_MIN = 12 * 60

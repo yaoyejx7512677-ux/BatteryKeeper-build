@@ -56,3 +56,16 @@ $env:ANDROID_HOME = 'C:\Android\sdk'
 .\gradlew.bat clean
 ```
 
+
+## GitHub Actions（v1.5.4）
+
+仓库现有 workflow 文件路径保持为 `.github/workflows/build-apk-v1.5.3.yml`，但内容已升级为 **Build BatteryKeeper 1.5.4 Fixed-Signed APK**。保留旧文件名是为了直接覆盖现有 workflow，避免同时触发两套 Actions。
+
+需要继续保留以下 Repository Secrets（与 v1.5.3 完全相同，不要重新生成 keystore）：
+
+- `BATTERYKEEPER_KEYSTORE_B64`
+- `BATTERYKEEPER_STORE_PASSWORD`
+- `BATTERYKEEPER_KEY_ALIAS`
+- `BATTERYKEEPER_KEY_PASSWORD`
+
+成功产物：`BatteryKeeper-v1.5.4-Fixed-Signed-APK`，其中 APK 文件名为 `BatteryKeeper-v1.5.4-fixed-debug.apk`。

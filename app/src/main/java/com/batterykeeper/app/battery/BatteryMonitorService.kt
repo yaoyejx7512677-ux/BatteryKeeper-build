@@ -86,15 +86,21 @@ class BatteryMonitorService : Service() {
         }
         if (connected && sessionStart == null) {
             sessionStart = s; energy = 0.0; weightedPower = 0.0; duration = 0L; peak = 0f
-        } else if (connected && prev != null && dt > 0 && s.powerW.isFinite() && prev.powerW.isFinite()) {
-            energy += MeasurementMath.chargeMah(
-                if (prev.powerW > 0) prev.currentA.toDouble() else 0.0,
-                if (s.powerW > 0) s.currentA.toDouble() else 0.0, dt)
-            weightedPower += (prev.powerW.coerceAtLeast(0f) + s.powerW.coerceAtLeast(0f)) / 2.0 * dt
+        } else if (connected && prev != null && dt > 0) {
+            // currentA 在采样器中已经统一为幅值。部分 Xiaomi 内核的 CURRENT_NOW 充电时为负数，
+            // 因此不能再用 powerW > 0 判断“是否计入充电会话”，否则会出现实时功率正常但
+            // 已充入/平均功率/峰值全部为 0 的情况。只要物理电源仍连接，就按电流幅值积分。
+            val prevA = prev.currentA.takeIf { it.isFinite() }?.toDouble() ?: 0.0
+            val nowA = s.currentA.takeIf { it.isFinite() }?.toDouble() ?: 0.0
+            energy += MeasurementMath.chargeMah(prevA, nowA, dt)
+
+            val prevPower = prev.powerW.takeIf { it.isFinite() }?.let { abs(it) } ?: 0f
+            val nowPower = s.powerW.takeIf { it.isFinite() }?.let { abs(it) } ?: 0f
+            weightedPower += (prevPower + nowPower) / 2.0 * dt
             duration += dt
         }
         if (sessionStart != null) {
-            if (s.powerW.isFinite()) peak = maxOf(peak,s.powerW)
+            if (s.powerW.isFinite()) peak = maxOf(peak, abs(s.powerW))
             BatteryStateHolder.updateSession(BatteryStateHolder.SessionInfo(
                 sessionStart!!.timestamp,sessionStart!!.level,energy.toInt(),peak,
                 if (duration > 0) (weightedPower/duration).toFloat() else 0f))

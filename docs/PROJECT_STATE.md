@@ -8,58 +8,53 @@
 
 ## 当前版本
 
-- 应用版本：v1.5.0
-- versionCode：8
+- 应用版本：v1.5.4
+- versionCode：13
 - 包名：`com.batterykeeper.app`
 - minSdk 34 / targetSdk 36 / compileSdk 36
 - ABI：arm64-v8a
-- 数据库：Room v2，与 v1.3.0 结构兼容
+- 数据库：Room v2，本次不改表结构
 
 ## 当前能力
 
-- 自适应前台采样与常驻通知。
+- 自适应前台采样与统一常驻通知 `#1`。
 - 当前电量、电池侧功率、电流、电压、温度和充放电状态。
-- 充电会话定期落盘，中断前尽量保存；功率均值按时间加权。
+- 充电会话实时统计已充入 mAh、平均功率与峰值功率；v1.5.4 对 Xiaomi `CURRENT_NOW` 符号差异做了方向归一化。
 - 历史趋势按当天零点或近 7/30 天查询，采样空缺不外推。
 - 循环次数优先使用 Android 14+ `EXTRA_CYCLE_COUNT`，否则使用报告值或安装后累计放电估算。
 - 满充容量持久化，健康度优先使用检测报告。
-- Bug 报告 ZIP 与截图 OCR 导入；识别结果经用户核对后保存，可删除。
-- 响应式 Glance 小组件、充电时悬浮胶囊、分页 CSV 导出。
-- 首页已重排，缺失数据使用“—”而非伪造的 0 或满健康值。
+- Bug 报告 ZIP 支持 HyperOS 3/4 多来源解析；截图 OCR 导入继续保留。
+- 响应式 Glance 小组件、分页 CSV 导出。
+- Xiaomi 原生超级岛个人自用模式：摘要态温度/功率，通知与前台服务合并为一张；无官方 App ID 时不保证 SystemUI 视觉层长期常驻。
 
-## 技术栈与模块
+## v1.5.4 关键变化
 
-- Kotlin 2.0.21、Compose BOM 2024.12.01、Material 3。
-- Room 2.6.1 + KSP 2.0.21-1.0.28。
-- WorkManager 2.10.0、Glance 1.1.1、ML Kit 中文 OCR 16.0.1。
-- `battery/`：采样、计算、状态、前台服务和悬浮窗。
-- `data/`：Room 实体、DAO 和数据库。
-- `report/`：Bug 报告与截图识别。
-- `ui/`：Compose 页面、组件和 ViewModel。
-- `worker/`：日统计补算和原始数据清理。
-- `widget/`：桌面小组件。
+- 超级岛常规刷新 10 秒；显著功率/温度变化可提前刷新。
+- 仅统一通知 `#1` 真正丢失时自动恢复。
+- 诊断页拆分“BatteryKeeper 应用侧”和“HyperOS / SystemUI”。
+- Bugreport 字段优先级：AIDL HealthInfo > Health HAL > `POWER_SUPPLY_*` > batterystats。
+- 报告结果显示解析格式、字段来源与置信度。
 
 ## 构建与验证状态
 
-- Release 构建成功。
-- 6 项统计算法单元测试通过。
-- Android Lint：0 error，45 warning。
-- APK Signature Scheme v2 校验通过。
-- 签名证书 SHA-256：`27ffa5d8179a8f8d0298b0d20c1d1bb895f1a158bd5f3fd3eca3af450dd1633c`。
-- APK SHA-256：`b216d1b300e508638089ee6f609bc9fb9a6b91ee9402744b56fc77d320c1af4f`。
-- 原生库经 16 KB ELF 段对齐和 APK zipalign 校验。
-- 尚未在小米真机上完成连续运行测试。
+- 本地已完成源码静态语法检查；当前执行环境无法联网下载 Gradle 8.13，因此最终 APK 编译交由 GitHub Actions。
+- v1.5.4 workflow 继续使用 v1.5.3 的固定签名 Repository Secrets，不引入新密钥。
+- 现有 HyperOS 3/4 风格样本 Bugreport 回归：满充 6791 mAh、设计 7000 mAh、循环 316、估算 6941 mAh 可被新规则命中。
 
 ## 重要文件
 
-- `app/src/main/AndroidManifest.xml`：权限与系统组件。
-- `app/src/main/java/com/batterykeeper/app/battery/BatteryMonitorService.kt`：监测主循环。
-- `app/src/main/java/com/batterykeeper/app/battery/HistoryMath.kt`：历史区间统计。
-- `app/src/main/java/com/batterykeeper/app/data/Entities.kt`：数据库结构。
-- `app/src/test/`：算法回归测试。
-- `release/BUILD_VERIFICATION.json`：交付 APK 的验证记录。
+- `app/src/main/java/com/batterykeeper/app/battery/BatteryMonitorService.kt`：监测主循环和充电会话。
+- `app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt`：原生超级岛、统一通知与诊断。
+- `app/src/main/java/com/batterykeeper/app/report/ReportImport.kt`：HyperOS 3/4 Bugreport 与截图识别。
+- `app/src/main/java/com/batterykeeper/app/ui/screens/ReportsScreen.kt`：报告导入与解析来源展示。
+- `app/src/main/java/com/batterykeeper/app/ui/screens/SettingsScreen.kt`：超级岛分层诊断。
+- `.github/workflows/build-apk-v1.5.3.yml`：文件名为历史兼容，内容已升级为 v1.5.4 构建，直接覆盖仓库现有 workflow，避免重复 Action。
 
 ## 下一步
 
-优先在小米 17 / 澎湃 OS 4 上测试后台存活、功率方向、悬浮窗位置、小组件刷新、报告导入和旧版覆盖升级。真机结果应写入 `KNOWN_ISSUES.md` 与 `SESSION_HANDOFF.md`。
+通过 GitHub Actions 生成固定签名 v1.5.4 APK 后，重点真机验证：
 
+- 充电 1 分钟后会话的 mAh / 平均功率 / 峰值功率是否非 0。
+- 超级岛 10 秒节流与 SystemUI 收起时诊断是否符合预期。
+- HyperOS 3 Bugreport 现有样本回归。
+- 获取真实 HyperOS 4 Bugreport 后补充最终格式回归。

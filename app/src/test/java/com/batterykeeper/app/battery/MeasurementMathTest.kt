@@ -14,6 +14,9 @@ class MeasurementMathTest {
    val amount=(1..100).sumOf { MeasurementMath.chargeMah(0.18,0.18,10000) }
    assertEquals(50.0,amount,0.000001)
  }
+ @Test fun oneMinuteAt132AProduces22Mah() {
+   assertEquals(22.0,MeasurementMath.chargeMah(1.32,1.32,60_000),0.000001)
+ }
  @Test fun dailyBoundarySplitsCharge() {
    val points=listOf(HistoryMath.Point(0,1.0,4.0,30.0),HistoryMath.Point(60000,1.0,4.0,30.0))
    assertEquals(8.333333,HistoryMath.summarize(points,30000,90000).chargedMah,0.00001)

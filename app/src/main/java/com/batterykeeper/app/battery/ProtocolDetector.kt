@@ -1,6 +1,7 @@
 package com.batterykeeper.app.battery
 
 import android.os.BatteryManager
+import kotlin.math.abs
 
 /**
  * 充电档位推断：澎湃OS 不向第三方应用开放实时充电协议（sysfs/dumpsys 均不可读），
@@ -19,7 +20,7 @@ object ProtocolDetector {
         }
         if (snapshot.isFull) return ProtocolInfo("已充满")
         if (!snapshot.powerW.isFinite()) return ProtocolInfo("功率不可用")
-        val w = snapshot.powerW.coerceAtLeast(0f)
+        val w = abs(snapshot.powerW)
         val name = when {
             snapshot.plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS ->
                 if (w >= 30f) "无线快充" else "无线充电"

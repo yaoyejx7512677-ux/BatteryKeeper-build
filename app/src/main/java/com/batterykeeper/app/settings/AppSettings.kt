@@ -99,7 +99,7 @@ class AppSettings(context: Context) {
         get() = prefs.getInt(KEY_MONITOR_LAST_STATUS, 0)
         set(v) = prefs.edit().putInt(KEY_MONITOR_LAST_STATUS, v).apply()
 
-    /** 超级岛最近一次 notify(1501) 的时间、原因和累计次数 */
+    /** 超级岛最近一次 notify(统一通知 #1) 的时间、原因和累计次数 */
     var islandLastPostTime: Long
         get() = prefs.getLong(KEY_ISLAND_LAST_POST, 0L)
         set(v) = prefs.edit().putLong(KEY_ISLAND_LAST_POST, v).apply()
@@ -116,7 +116,7 @@ class AppSettings(context: Context) {
         get() = prefs.getInt(KEY_ISLAND_RECOVERY_COUNT, 0)
         set(v) = prefs.edit().putInt(KEY_ISLAND_RECOVERY_COUNT, v).apply()
 
-    /** BatteryKeeper 主动 cancel(1501) 的最近时间和原因。 */
+    /** BatteryKeeper 主动退出岛状态 的最近时间和原因。 */
     var islandLastDismissTime: Long
         get() = prefs.getLong(KEY_ISLAND_LAST_DISMISS, 0L)
         set(v) = prefs.edit().putLong(KEY_ISLAND_LAST_DISMISS, v).apply()

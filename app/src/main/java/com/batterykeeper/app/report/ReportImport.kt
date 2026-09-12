@@ -10,7 +10,6 @@ import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -19,36 +18,55 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * 澎湃OS 电池检测报告导入：
- *  - Bug 报告 ZIP（拨号盘 *#*#284#*#* 生成）：解析其中的 POWER_SUPPLY_* uevent 与 batterystats 字段
- *  - 截图识别（ML Kit 中文 OCR）：解析检测报告截图中的中文标签
+ * 澎湃OS 电池检测报告导入。
+ *
+ * v1.5.4：Bugreport 不再先假定 OS 版本，而是同时识别 HyperOS 3/4 常见来源，
+ * 再按可信度选择字段：AIDL HealthInfo > Health HAL dump > POWER_SUPPLY_* > batterystats。
  */
 object ReportImport {
 
     // ---------- Bug 报告 ZIP ----------
 
-    private val reCycle = Regex("POWER_SUPPLY_CYCLE_COUNT=(\\d+)", RegexOption.IGNORE_CASE)
-    private val reFull = Regex("POWER_SUPPLY_CHARGE_FULL=(\\d+)", RegexOption.IGNORE_CASE)
-    private val reDesign = Regex("POWER_SUPPLY_CHARGE_FULL_DESIGN=(\\d+)", RegexOption.IGNORE_CASE)
+    private val reCycle = Regex("POWER_SUPPLY_CYCLE_COUNT\\s*[=:]\\s*(\\d+)", RegexOption.IGNORE_CASE)
+    private val reFull = Regex("POWER_SUPPLY_CHARGE_FULL\\s*[=:]\\s*(\\d+)", RegexOption.IGNORE_CASE)
+    private val reDesign = Regex("POWER_SUPPLY_CHARGE_FULL_DESIGN\\s*[=:]\\s*(\\d+)", RegexOption.IGNORE_CASE)
+
     private val reEstimated = Regex("Estimated battery capacity[:\\s]*(\\d+)", RegexOption.IGNORE_CASE)
     private val reLearnedMin = Regex("Min learned battery capacity[:\\s]*(\\d+)", RegexOption.IGNORE_CASE)
     private val reLearnedMax = Regex("Max learned battery capacity[:\\s]*(\\d+)", RegexOption.IGNORE_CASE)
     private val reLearnedLast = Regex("Last learned battery capacity[:\\s]*(\\d+)", RegexOption.IGNORE_CASE)
 
-    // Android 14+/HyperOS 4 AIDL health dump. Example:
-    // getHealthInfo -> HealthInfo{..., batteryCycleCount: 316,
-    // batteryFullChargeUah: 6791000, batteryFullChargeDesignCapacityUah: 7000000, ...}
-    private val reHealthCycle = Regex("batteryCycleCount[:\\s]*(\\d+)", RegexOption.IGNORE_CASE)
-    private val reHealthFull = Regex("batteryFullChargeUah[:\\s]*(\\d+)", RegexOption.IGNORE_CASE)
-    private val reHealthDesign = Regex("batteryFullChargeDesignCapacityUah[:\\s]*(\\d+)", RegexOption.IGNORE_CASE)
-    private val reHealthCycleLine = Regex("^\\s*cycle count[:\\s]+(\\d+)\\s*$", RegexOption.IGNORE_CASE)
-    private val reHealthFullLine = Regex("^\\s*Full charge[:\\s]+(\\d+)\\s*$", RegexOption.IGNORE_CASE)
+    // HyperOS 3/4 / Android 新版 AIDL HealthInfo。
+    private val reHealthCycle = Regex("batteryCycleCount[:=\\s]*(\\d+)", RegexOption.IGNORE_CASE)
+    private val reHealthFull = Regex("batteryFullChargeUah[:=\\s]*(\\d+)", RegexOption.IGNORE_CASE)
+    private val reHealthDesign = Regex("batteryFullChargeDesignCapacityUah[:=\\s]*(\\d+)", RegexOption.IGNORE_CASE)
+
+    // dumpsys android.hardware.health.IHealth/default 等多行 Health HAL 输出。
+    private val reHealthCycleLine = Regex("^\\s*(?:battery )?cycle count[:=\\s]+(\\d+)\\s*$", RegexOption.IGNORE_CASE)
+    private val reHealthFullLine = Regex("^\\s*(?:battery )?Full charge[:=\\s]+(\\d+)\\s*$", RegexOption.IGNORE_CASE)
+    private val reHealthDesignLine = Regex(
+        "^\\s*(?:battery )?(?:Full charge design capacity|Design capacity)[:=\\s]+(\\d+)\\s*$",
+        RegexOption.IGNORE_CASE,
+    )
+
     private val reTimeFromName = Regex("(\\d{4})-(\\d{2})-(\\d{2})[-_](\\d{2})[-_](\\d{2})")
 
     private const val MAX_MAIN_REPORT_CHARS = 256_000_000
-    private const val MAX_OTHER_TEXT_CHARS = 1_000_000
+    private const val MAX_RELATED_TEXT_CHARS = 2_000_000
+    private const val MAX_TOTAL_SCAN_CHARS = 300_000_000
 
-    private fun uahToMah(raw: String): Int =
+    private const val P_AIDL = 40
+    private const val P_HEALTH_HAL = 35
+    private const val P_POWER_SUPPLY = 30
+    private const val P_BATTERYSTATS = 10
+
+    private data class Candidate(val value: Int, val priority: Int, val origin: String)
+
+    private fun choose(current: Candidate?, candidate: Candidate): Candidate =
+        if (current == null || candidate.priority > current.priority) candidate else current
+
+    /** 容量字段统一为 mAh；兼容 uAh 与已经是 mAh 的文本。 */
+    private fun capacityToMah(raw: String): Int =
         raw.toLongOrNull()?.let { value ->
             when {
                 value <= 0L -> -1
@@ -59,73 +77,139 @@ object ReportImport {
 
     suspend fun fromBugReport(context: Context, uri: Uri): HealthReport =
         withContext(Dispatchers.IO) {
-            var full = -1
-            var design = -1
-            var cycle = -1
-            var estimated = -1
-            var learnedMin = -1
-            var learnedMax = -1
-            var learnedLast = -1
+            var full: Candidate? = null
+            var design: Candidate? = null
+            var cycle: Candidate? = null
+            var estimated: Candidate? = null
+            var learnedMin: Candidate? = null
+            var learnedMax: Candidate? = null
+            var learnedLast: Candidate? = null
+
             var reportTime = queryDisplayName(context, uri)?.let(::parseTimeFromName) ?: 0L
             var sawZipEntry = false
+            var sawAidl = false
+            var sawHealthHal = false
+            var sawPowerSupply = false
+            var sawBatteryStats = false
+            var totalScanned = 0
 
             context.contentResolver.openInputStream(uri)?.use { input ->
                 ZipInputStream(input).use { zis ->
                     var entry = zis.nextEntry
-                    while (entry != null) {
+                    while (entry != null && totalScanned < MAX_TOTAL_SCAN_CHARS) {
                         sawZipEntry = true
                         if (!entry.isDirectory) {
                             val name = entry.name
+                            val lowerName = name.lowercase(Locale.US)
                             val baseName = name.substringAfterLast('/')
-                            val isText = name.endsWith(".txt", true) || name.endsWith(".log", true)
-                            val isMainBugReport = baseName.startsWith("bugreport-", true) && baseName.endsWith(".txt", true)
+                            val lowerBase = baseName.lowercase(Locale.US)
+                            val isMainBugReport = lowerBase.startsWith("bugreport-") && lowerBase.endsWith(".txt")
                             if (reportTime == 0L && isMainBugReport) {
                                 reportTime = parseTimeFromName(baseName) ?: 0L
                             }
-                            val shouldScan = isText && (
-                                isMainBugReport ||
-                                    baseName.equals("dumpstate_board.txt", true) ||
-                                    baseName.equals("dumpstate_log.txt", true)
-                                )
+
+                            val textLike = lowerBase.endsWith(".txt") || lowerBase.endsWith(".log") ||
+                                lowerBase.endsWith(".dump") || !lowerBase.contains('.')
+                            val relevantName = isMainBugReport ||
+                                lowerName.contains("dumpstate") ||
+                                lowerName.contains("health") ||
+                                lowerName.contains("battery") ||
+                                lowerName.contains("power_supply")
+                            val shouldScan = textLike && relevantName
 
                             if (shouldScan) {
-                                val maxChars = if (isMainBugReport) MAX_MAIN_REPORT_CHARS else MAX_OTHER_TEXT_CHARS
+                                val entryLimit = if (isMainBugReport) MAX_MAIN_REPORT_CHARS else MAX_RELATED_TEXT_CHARS
                                 val reader = zis.bufferedReader(Charsets.UTF_8)
                                 var inHealthDump = false
                                 var line = reader.readLine()
-                                var scanned = 0
-                                while (line != null && scanned < maxChars) {
-                                    scanned += line.length
+                                var entryScanned = 0
+                                while (line != null && entryScanned < entryLimit && totalScanned < MAX_TOTAL_SCAN_CHARS) {
+                                    entryScanned += line.length
+                                    totalScanned += line.length
 
-                                    if (line.contains("DUMP OF SERVICE android.hardware.health.IHealth/default", true)) {
+                                    if (
+                                        line.contains("DUMP OF SERVICE android.hardware.health.IHealth", true) ||
+                                        line.contains("DUMP OF SERVICE vendor.hardware.health", true)
+                                    ) {
                                         inHealthDump = true
-                                    } else if (inHealthDump && line.startsWith("---------") && line.contains("duration of dumpsys", true)) {
+                                        sawHealthHal = true
+                                    } else if (
+                                        inHealthDump && line.startsWith("---------") &&
+                                        (line.contains("duration of dumpsys", true) || line.contains("DUMP OF SERVICE", true))
+                                    ) {
                                         inHealthDump = false
                                     }
 
-                                    if (full <= 0) {
-                                        reFull.find(line)?.let { full = uahToMah(it.groupValues[1]) }
-                                        reHealthFull.find(line)?.let { full = uahToMah(it.groupValues[1]) }
-                                        if (inHealthDump) reHealthFullLine.find(line)?.let { full = uahToMah(it.groupValues[1]) }
+                                    reHealthFull.find(line)?.let {
+                                        val v = capacityToMah(it.groupValues[1])
+                                        if (v > 0) full = choose(full, Candidate(v, P_AIDL, "AIDL HealthInfo"))
+                                        sawAidl = true
                                     }
-                                    if (design <= 0) {
-                                        reDesign.find(line)?.let { design = uahToMah(it.groupValues[1]) }
-                                        reHealthDesign.find(line)?.let { design = uahToMah(it.groupValues[1]) }
+                                    reHealthDesign.find(line)?.let {
+                                        val v = capacityToMah(it.groupValues[1])
+                                        if (v > 0) design = choose(design, Candidate(v, P_AIDL, "AIDL HealthInfo"))
+                                        sawAidl = true
                                     }
-                                    if (cycle < 0) {
-                                        reCycle.find(line)?.let { cycle = it.groupValues[1].toInt() }
-                                        reHealthCycle.find(line)?.let { cycle = it.groupValues[1].toInt() }
-                                        if (inHealthDump) reHealthCycleLine.find(line)?.let { cycle = it.groupValues[1].toInt() }
+                                    reHealthCycle.find(line)?.let {
+                                        val v = it.groupValues[1].toIntOrNull() ?: -1
+                                        if (v >= 0) cycle = choose(cycle, Candidate(v, P_AIDL, "AIDL HealthInfo"))
+                                        sawAidl = true
                                     }
-                                    if (estimated <= 0) reEstimated.find(line)?.let { estimated = it.groupValues[1].toInt() }
-                                    if (learnedMin <= 0) reLearnedMin.find(line)?.let { learnedMin = it.groupValues[1].toInt() }
-                                    if (learnedMax <= 0) reLearnedMax.find(line)?.let { learnedMax = it.groupValues[1].toInt() }
-                                    if (learnedLast <= 0) reLearnedLast.find(line)?.let { learnedLast = it.groupValues[1].toInt() }
 
-                                    // 关键字段和常见附加字段都拿到后即可提前结束，避免继续扫描超大报告。
-                                    if (full > 0 && design > 0 && cycle >= 0 &&
-                                        estimated > 0 && learnedMin > 0 && learnedMax > 0 && learnedLast > 0
-                                    ) break
+                                    if (inHealthDump) {
+                                        reHealthFullLine.find(line)?.let {
+                                            val v = capacityToMah(it.groupValues[1])
+                                            if (v > 0) full = choose(full, Candidate(v, P_HEALTH_HAL, "Health HAL"))
+                                            sawHealthHal = true
+                                        }
+                                        reHealthDesignLine.find(line)?.let {
+                                            val v = capacityToMah(it.groupValues[1])
+                                            if (v > 0) design = choose(design, Candidate(v, P_HEALTH_HAL, "Health HAL"))
+                                            sawHealthHal = true
+                                        }
+                                        reHealthCycleLine.find(line)?.let {
+                                            val v = it.groupValues[1].toIntOrNull() ?: -1
+                                            if (v >= 0) cycle = choose(cycle, Candidate(v, P_HEALTH_HAL, "Health HAL"))
+                                            sawHealthHal = true
+                                        }
+                                    }
+
+                                    reFull.find(line)?.let {
+                                        val v = capacityToMah(it.groupValues[1])
+                                        if (v > 0) full = choose(full, Candidate(v, P_POWER_SUPPLY, "power_supply"))
+                                        sawPowerSupply = true
+                                    }
+                                    reDesign.find(line)?.let {
+                                        val v = capacityToMah(it.groupValues[1])
+                                        if (v > 0) design = choose(design, Candidate(v, P_POWER_SUPPLY, "power_supply"))
+                                        sawPowerSupply = true
+                                    }
+                                    reCycle.find(line)?.let {
+                                        val v = it.groupValues[1].toIntOrNull() ?: -1
+                                        if (v >= 0) cycle = choose(cycle, Candidate(v, P_POWER_SUPPLY, "power_supply"))
+                                        sawPowerSupply = true
+                                    }
+
+                                    reEstimated.find(line)?.let {
+                                        val v = capacityToMah(it.groupValues[1])
+                                        if (v > 0) estimated = choose(estimated, Candidate(v, P_BATTERYSTATS, "batterystats"))
+                                        sawBatteryStats = true
+                                    }
+                                    reLearnedMin.find(line)?.let {
+                                        val v = capacityToMah(it.groupValues[1])
+                                        if (v > 0) learnedMin = choose(learnedMin, Candidate(v, P_BATTERYSTATS, "batterystats"))
+                                        sawBatteryStats = true
+                                    }
+                                    reLearnedMax.find(line)?.let {
+                                        val v = capacityToMah(it.groupValues[1])
+                                        if (v > 0) learnedMax = choose(learnedMax, Candidate(v, P_BATTERYSTATS, "batterystats"))
+                                        sawBatteryStats = true
+                                    }
+                                    reLearnedLast.find(line)?.let {
+                                        val v = capacityToMah(it.groupValues[1])
+                                        if (v > 0) learnedLast = choose(learnedLast, Candidate(v, P_BATTERYSTATS, "batterystats"))
+                                        sawBatteryStats = true
+                                    }
 
                                     line = reader.readLine()
                                 }
@@ -140,18 +224,80 @@ object ReportImport {
             if (!sawZipEntry) {
                 throw IllegalStateException("所选文件不是有效的 Bug 报告 ZIP")
             }
-            if (full <= 0 && cycle < 0 && estimated <= 0 && learnedLast <= 0) {
-                throw IllegalStateException("报告中未找到电池数据，请确认选择的是 *#*#284#*#* 生成的 Bug 报告 ZIP")
+
+            val fullValue = full?.value ?: -1
+            val designValue = design?.value ?: -1
+            val cycleValue = cycle?.value ?: -1
+            val estimatedValue = estimated?.value ?: -1
+            val learnedMinValue = learnedMin?.value ?: -1
+            val learnedMaxValue = learnedMax?.value ?: -1
+            val learnedLastValue = learnedLast?.value ?: -1
+
+            if (fullValue <= 0 && cycleValue < 0 && estimatedValue <= 0 && learnedLastValue <= 0) {
+                throw IllegalStateException(
+                    "报告中未找到电池数据。已兼容 HyperOS 3/4 常见 Health HAL、AIDL HealthInfo、power_supply 与 batterystats 格式；请确认选择的是完整 Bug 报告 ZIP。",
+                )
             }
 
+            val format = when {
+                sawAidl -> "HyperOS 3/4 / AIDL Health"
+                sawHealthHal -> "HyperOS 3/4 / Health HAL"
+                sawPowerSupply -> "HyperOS 3/4 / power_supply"
+                sawBatteryStats -> "Android batterystats"
+                else -> "HyperOS Bugreport"
+            }
+            val keyCount = listOf(fullValue > 0, designValue > 0, cycleValue >= 0).count { it }
+            val confidence = when {
+                keyCount >= 3 -> "高"
+                keyCount >= 2 || (fullValue > 0 && estimatedValue > 0) -> "中"
+                else -> "低"
+            }
+            val origins = listOfNotNull(
+                full?.let { "满充=${it.origin}" },
+                design?.let { "设计=${it.origin}" },
+                cycle?.let { "循环=${it.origin}" },
+                estimated?.let { "估算=${it.origin}" },
+            ).joinToString("；")
+
             buildReport(
-                source = "bugreport",
+                source = encodeBugReportSource(format, confidence, origins),
                 timestamp = if (reportTime > 0) reportTime else System.currentTimeMillis(),
-                full = full, design = design, cycle = cycle,
-                estimated = estimated, learnedMin = learnedMin,
-                learnedMax = learnedMax, learnedLast = learnedLast,
+                full = fullValue,
+                design = designValue,
+                cycle = cycleValue,
+                estimated = estimatedValue,
+                learnedMin = learnedMinValue,
+                learnedMax = learnedMaxValue,
+                learnedLast = learnedLastValue,
             )
         }
+
+    private fun encodeBugReportSource(format: String, confidence: String, origins: String): String =
+        "bugreport|$format|$confidence|$origins"
+
+    data class SourceMeta(
+        val kind: String,
+        val format: String,
+        val confidence: String,
+        val origins: String,
+    )
+
+    /** 兼容历史记录的 source="bugreport" / "screenshot"。 */
+    fun sourceMeta(source: String): SourceMeta {
+        if (source == "screenshot") return SourceMeta("screenshot", "截图识别", "—", "OCR")
+        if (source == "bugreport") return SourceMeta("bugreport", "旧版 Bug 报告", "—", "旧版记录")
+        val parts = source.split('|', limit = 4)
+        return if (parts.firstOrNull() == "bugreport") {
+            SourceMeta(
+                kind = "bugreport",
+                format = parts.getOrNull(1).orEmpty().ifBlank { "HyperOS Bugreport" },
+                confidence = parts.getOrNull(2).orEmpty().ifBlank { "—" },
+                origins = parts.getOrNull(3).orEmpty(),
+            )
+        } else {
+            SourceMeta(source, source, "—", "")
+        }
+    }
 
     private fun queryDisplayName(context: Context, uri: Uri): String? =
         runCatching {
@@ -162,15 +308,15 @@ object ReportImport {
             }
         }.getOrNull()
 
-    private fun parseTimeFromName(name: String): Long? { return try {
-        val m = reTimeFromName.find(name) ?: return null
-        val (y, mo, d, h, mi) = m.destructured
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
-            .parse("$y-$mo-$d $h:$mi")?.time
-    } catch (_: Exception) {
-        null
-    }
-
+    private fun parseTimeFromName(name: String): Long? {
+        return try {
+            val m = reTimeFromName.find(name) ?: return null
+            val (y, mo, d, h, mi) = m.destructured
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
+                .parse("$y-$mo-$d $h:$mi")?.time
+        } catch (_: Exception) {
+            null
+        }
     }
 
     // ---------- 截图识别 ----------
@@ -205,8 +351,13 @@ object ReportImport {
             buildReport(
                 source = "screenshot",
                 timestamp = time,
-                full = full, design = design, cycle = cycle,
-                estimated = estimated, learnedMin = -1, learnedMax = -1, learnedLast = -1,
+                full = full,
+                design = design,
+                cycle = cycle,
+                estimated = estimated,
+                learnedMin = -1,
+                learnedMax = -1,
+                learnedLast = -1,
                 healthOverride = health,
             )
         }
@@ -214,7 +365,7 @@ object ReportImport {
     private suspend fun recognizeText(image: InputImage): String =
         suspendCancellableCoroutine { cont ->
             val recognizer = TextRecognition.getClient(
-                ChineseTextRecognizerOptions.Builder().build()
+                ChineseTextRecognizerOptions.Builder().build(),
             )
             recognizer.process(image)
                 .addOnSuccessListener { if (cont.isActive) cont.resume(it.text) }
@@ -227,8 +378,13 @@ object ReportImport {
     private fun buildReport(
         source: String,
         timestamp: Long,
-        full: Int, design: Int, cycle: Int,
-        estimated: Int, learnedMin: Int, learnedMax: Int, learnedLast: Int,
+        full: Int,
+        design: Int,
+        cycle: Int,
+        estimated: Int,
+        learnedMin: Int,
+        learnedMax: Int,
+        learnedLast: Int,
         healthOverride: Float = -1f,
     ): HealthReport {
         require(healthOverride <= 110f) { "健康度超出合理范围，请检查截图" }

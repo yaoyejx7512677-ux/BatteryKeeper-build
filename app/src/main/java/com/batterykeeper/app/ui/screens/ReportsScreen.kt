@@ -74,6 +74,16 @@ fun ReportsScreen(vm: BatteryViewModel) {
             title = { Text("核对识别结果") },
             text = { Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text("确认数值与原报告一致。缺失项可留空。",fontSize=13.sp)
+                val sourceMeta = ReportImport.sourceMeta(report.source)
+                if (sourceMeta.kind == "bugreport") {
+                    Text(
+                        "解析格式：${sourceMeta.format} · 置信度：${sourceMeta.confidence}",
+                        fontSize = 11.sp, color = TxtSecondary,
+                    )
+                    if (sourceMeta.origins.isNotBlank()) {
+                        Text("字段来源：${sourceMeta.origins}", fontSize = 10.5.sp, color = TxtTertiary)
+                    }
+                }
                 androidx.compose.material3.OutlinedTextField(full,{ full=it },label={ Text("满充容量 mAh") },singleLine=true)
                 androidx.compose.material3.OutlinedTextField(cycles,{ cycles=it },label={ Text("循环次数") },singleLine=true)
                 androidx.compose.material3.OutlinedTextField(health,{ health=it },label={ Text("健康度 %") },singleLine=true)
@@ -185,7 +195,8 @@ fun ReportsScreen(vm: BatteryViewModel) {
             Spacer(Modifier.height(8.dp))
             Text(
                 "获取方式一：拨号盘输入 *#*#284#*#* 生成 Bug 报告，等待生成完成（通知栏提示），" +
-                    "将 ZIP 文件保存后在此导入；\n获取方式二：对检测报告/电池信息页面截图，识别导入。",
+                    "将 ZIP 文件保存后在此导入；支持 HyperOS 3 / HyperOS 4 常见 Health HAL、AIDL HealthInfo、power_supply 与 batterystats 格式自动识别。\n" +
+                    "获取方式二：对检测报告/电池信息页面截图，识别导入。",
                 fontSize = 11.sp, color = TxtSecondary, lineHeight = 17.sp,
             )
             Spacer(Modifier.height(12.dp))
@@ -250,9 +261,18 @@ fun ReportsScreen(vm: BatteryViewModel) {
                                 fmtTime.format(Date(r.timestamp)),
                                 fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                             )
+                            val sourceMeta = ReportImport.sourceMeta(r.source)
                             Text(
-                                if (r.source == "bugreport") "Bug 报告" else "截图识别",
+                                if (sourceMeta.kind == "bugreport") sourceMeta.format else "截图识别",
                                 fontSize = 10.sp, color = TxtTertiary,
+                            )
+                        }
+                        val sourceMetaDetail = ReportImport.sourceMeta(r.source)
+                        if (sourceMetaDetail.kind == "bugreport" && sourceMetaDetail.confidence != "—") {
+                            Text(
+                                "解析置信度：${sourceMetaDetail.confidence}" +
+                                    if (sourceMetaDetail.origins.isNotBlank()) " · ${sourceMetaDetail.origins}" else "",
+                                fontSize = 9.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 3.dp),
                             )
                         }
                         androidx.compose.material3.TextButton(onClick = { deleteId = r.id }) { Text("删除此记录", color = TxtSecondary) }

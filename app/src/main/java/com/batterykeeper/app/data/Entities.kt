@@ -57,7 +57,7 @@ data class DailyStats(
 data class HealthReport(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestamp: Long,        // 报告生成时间（无法解析时用导入时间）
-    val source: String,         // bugreport / screenshot
+    val source: String,         // screenshot / bugreport|格式|置信度|字段来源（兼容旧 bugreport）
     val fullChargeMah: Int,     // 满充容量 mAh（-1 未知）
     val designMah: Int,         // 设计容量 mAh（-1 未知）
     val cycleCount: Int,        // 循环次数（-1 未知）

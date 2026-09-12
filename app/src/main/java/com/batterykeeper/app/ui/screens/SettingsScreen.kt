@@ -199,10 +199,14 @@ fun SettingsScreen(vm: BatteryViewModel) {
                     Spacer(Modifier.height(12.dp))
                     Text("超级岛诊断", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Text(
+                        "BatteryKeeper 应用侧",
+                        fontSize = 10.5.sp, fontWeight = FontWeight.Medium,
+                        color = TxtSecondary, modifier = Modifier.padding(top = 6.dp),
+                    )
+                    Text(
                         "通知总开关：${if (st.notificationsEnabled) "开启" else "关闭"} · " +
-                            "统一通知 #1：${if (st.unifiedNotificationActive) "存在" else "不存在"} · " +
-                            "焦点参数：${if (st.focusPayloadActive) "存在" else "无"}",
-                        fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 5.dp),
+                            "统一通知 #1：${if (st.unifiedNotificationActive) "存在" else "不存在"}",
+                        fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 3.dp),
                     )
                     Text(
                         "监测心跳：${if (st.monitorHeartbeatFresh) "正常" else "超时/未运行"}（${ageText(st.monitorHeartbeatTime)}） · " +
@@ -211,37 +215,55 @@ fun SettingsScreen(vm: BatteryViewModel) {
                     )
                     Text(
                         "最近投递：${ageText(st.lastPostTime)} · ${st.lastPostReason} · " +
-                            "累计 ${st.postCount} 次 / 自动恢复 ${st.recoveryCount} 次",
+                            "累计 ${st.postCount} 次 / 通知缺失恢复 ${st.recoveryCount} 次",
                         fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 4.dp),
                     )
                     Text(
                         "最近主动取消：${ageText(st.lastDismissTime)} · ${st.lastDismissReason}",
                         fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 4.dp),
                     )
+
                     Text(
-                        "固定签名 SHA-256：${st.signingCertSha256}",
-                        fontSize = 9.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 5.dp),
+                        "HyperOS / SystemUI",
+                        fontSize = 10.5.sp, fontWeight = FontWeight.Medium,
+                        color = TxtSecondary, modifier = Modifier.padding(top = 9.dp),
+                    )
+                    Text(
+                        "焦点参数查询：${if (st.focusPayloadActive) "存在" else "暂未读取到"} · " +
+                            "焦点权限：${if (st.focusPermission) "已开启" else "未获得/未开启"}",
+                        fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 3.dp),
                     )
                     Text(
                         "小米平台 App ID：${if (st.officialAppIdConfigured) "已配置" else "未配置（个人自用模式）"} · " +
                             "构建：${if (st.debuggable) "Debug" else "Release"}",
-                        fontSize = 10.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 4.dp),
+                        fontSize = 10.5.sp, color = if (st.officialAppIdConfigured) TxtTertiary else Orange,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Text(
+                        "固定签名 SHA-256：${st.signingCertSha256}",
+                        fontSize = 9.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 5.dp),
                     )
 
                     val diagnosis = when {
-                        !st.notificationsEnabled -> "⚠ 系统通知总开关已关闭，超级岛无法稳定工作。"
-                        st.monitorHeartbeatFresh && st.monitorLastPlugged != 0 && st.unifiedNotificationActive && st.focusPayloadActive ->
-                            "若此刻摄像头区域已经没有岛：统一通知 #1 及焦点参数仍存活，说明是 HyperOS SystemUI 收起/权限策略，不是 BatteryKeeper 主动取消。"
-                        st.monitorHeartbeatFresh && st.monitorLastPlugged != 0 && (!st.unifiedNotificationActive || !st.focusPayloadActive) ->
-                            "已插电且监测服务存活，但统一通知或焦点参数缺失；v1.5.3 会在下一次采样自动补发，并累计“自动恢复”次数。"
+                        !st.notificationsEnabled ->
+                            "⚠ 系统通知总开关已关闭，前台监测和超级岛都无法稳定工作。"
                         !st.monitorHeartbeatFresh ->
-                            "监测心跳已超时；优先检查后台运行、自启动和省电限制，服务被杀后无法维持超级岛。"
-                        else -> "当前诊断未发现异常；插电后观察统一通知 #1、焦点参数、心跳和自动恢复次数。"
+                            "⚠ 监测心跳已超时；优先检查后台运行、自启动和省电限制。"
+                        st.monitorLastPlugged != 0 && !st.unifiedNotificationActive ->
+                            "⚠ 已插电但统一通知 #1 不存在；v1.5.4 仅在这种情况下自动恢复通知，避免无意义高频重发。"
+                        st.monitorLastPlugged != 0 && st.unifiedNotificationActive && !st.focusPayloadActive ->
+                            "统一通知 #1 仍存在，但应用暂未读取到焦点参数。v1.5.4 不会因此立即补发；下一次正常 10 秒刷新会重新写入焦点参数。"
+                        st.monitorLastPlugged != 0 && st.unifiedNotificationActive && !st.officialAppIdConfigured ->
+                            "应用侧状态正常。当前为个人自用、未配置小米平台 App ID；若摄像头区域无岛，通常是 HyperOS SystemUI 收起/权限策略，应用无法强制长期常驻。"
+                        st.monitorHeartbeatFresh && st.monitorLastPlugged != 0 && st.unifiedNotificationActive ->
+                            "应用侧状态正常。若摄像头区域已无岛，说明通知仍存活但视觉层被 HyperOS SystemUI 收起，不是 BatteryKeeper 主动取消。"
+                        else ->
+                            "当前应用侧未发现异常；插电后重点观察统一通知 #1、心跳和“通知缺失恢复”次数。"
                     }
                     Text(
                         diagnosis,
                         fontSize = 10.5.sp,
-                        color = if (diagnosis.startsWith("⚠")) Orange else TxtSecondary,
+                        color = if (diagnosis.startsWith("⚠") || !st.officialAppIdConfigured) Orange else TxtSecondary,
                         modifier = Modifier.padding(top = 7.dp),
                     )
                 }

@@ -39,7 +39,16 @@ object BatterySampler {
 
         val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
             status == BatteryManager.BATTERY_STATUS_FULL
-        val powerW = if (currentA.isFinite() && voltageV.isFinite()) currentUa / 1_000_000f * voltageV else Float.NaN
+        // CURRENT_NOW 的正负号在不同厂商/内核上并不一致。BatteryKeeper 内部统一约定：
+        // 充电为正、放电为负；方向由公开的 BATTERY_STATUS / plugged 判断，电流只取幅值。
+        // 这样充电会话、协议分档和循环积分不会因为 Xiaomi 内核符号相反而全部归零/误算。
+        val powerMagnitude = if (currentA.isFinite() && voltageV.isFinite()) currentA * voltageV else Float.NaN
+        val powerW = when {
+            !powerMagnitude.isFinite() -> Float.NaN
+            charging -> powerMagnitude
+            plugged == 0 || status == BatteryManager.BATTERY_STATUS_DISCHARGING -> -powerMagnitude
+            else -> 0f // 已接电但系统报告 NOT_CHARGING，方向不可靠，不猜测。
+        }
 
         val chargeCounterUah = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
         val chargeCounterMah = if (chargeCounterUah != Int.MIN_VALUE && chargeCounterUah > 0)
