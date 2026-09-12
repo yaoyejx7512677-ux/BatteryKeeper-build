@@ -37,11 +37,15 @@ class BatteryMonitorService : Service() {
         super.onCreate()
         db = BatteryDatabase.get(this)
         settings = AppSettings(this)
+        settings.monitorServiceStartedAt = System.currentTimeMillis()
+        settings.monitorHeartbeatTime = settings.monitorServiceStartedAt
         nativeIsland = XiaomiIslandController(this)
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("monitor", "电池监测", NotificationManager.IMPORTANCE_LOW))
         try {
-            startForeground(1, notification("正在读取电池状态"), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(
+                FOREGROUND_NOTIFICATION_ID,
+                notification("正在读取电池状态"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
         } catch (e: Exception) {
             android.util.Log.e("BatteryKeeper", "Unable to start monitoring", e)
             stopSelf(); return
@@ -66,6 +70,10 @@ class BatteryMonitorService : Service() {
 
     private suspend fun sample() {
         val s = BatterySampler.sample(this)
+        val wallNow = System.currentTimeMillis()
+        settings.monitorHeartbeatTime = wallNow
+        settings.monitorLastPlugged = s.plugged
+        settings.monitorLastStatus = s.status
         val now = SystemClock.elapsedRealtime()
         val prev = previous
         val dt = if (prev != null) MeasurementMath.durationMs(previousElapsed, now) else 0L
@@ -104,10 +112,13 @@ class BatteryMonitorService : Service() {
         }
         val protocol = ProtocolDetector.detect(s)
         BatteryStateHolder.update(s, protocol)
-        if (settings.nativeIslandEnabled) {
+        val islandShown = if (settings.nativeIslandEnabled && connected) {
             nativeIsland.update(s, protocol.displayName, force = changed)
         } else {
-            nativeIsland.dismiss()
+            nativeIsland.dismiss(
+                if (!settings.nativeIslandEnabled) "设置中已关闭超级岛" else "拔掉电源",
+            )
+            false
         }
         previous=s; previousElapsed=now
         // Keep one sample per ten seconds (or a state transition). UI can sample faster.
@@ -119,9 +130,15 @@ class BatteryMonitorService : Service() {
             lastStored = now
         }
         if (changed || now-lastCheckpoint >= 15_000) { checkpoint(s,false); lastCheckpoint=now }
-        if (changed || now-lastNotification >= 15_000) {
-            getSystemService(NotificationManager::class.java).notify(1,notification(
-                "${s.stateName} · ${s.level}% · ${s.powerW.display()} W（电池侧）"))
+        // v1.5.3：前台服务通知与超级岛合并为同一个 #1。
+        // 插电并成功上岛时由 XiaomiIslandController 更新 #1；否则用普通监测内容覆盖同一个 #1。
+        if (!islandShown && (changed || now-lastNotification >= 15_000)) {
+            getSystemService(NotificationManager::class.java).notify(
+                FOREGROUND_NOTIFICATION_ID,
+                notification("${s.stateName} · ${s.level}% · ${s.powerW.display()} W（电池侧）"),
+            )
+            lastNotification = now
+        } else if (islandShown) {
             lastNotification = now
         }
         if (changed || now-lastWidget >= 60_000) {
@@ -138,8 +155,9 @@ class BatteryMonitorService : Service() {
             protocol=if(finished) "已结束" else "记录至最近采样",pluggedType=start.plugged))
         if(sessionId==0L) sessionId=id
     }
-    private fun notification(text: String): Notification = NotificationCompat.Builder(this,"monitor")
-        .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+    private fun notification(text: String): Notification =
+        NotificationCompat.Builder(this, XiaomiIslandController.CHANNEL_ID)
+        .setSmallIcon(com.batterykeeper.app.R.drawable.ic_island_battery)
         .setContentTitle("电池管家 · 监测运行中").setContentText(text)
         .setContentIntent(PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE))
         .setOngoing(true).setOnlyAlertOnce(true).build()
@@ -148,13 +166,16 @@ class BatteryMonitorService : Service() {
         return if(pendingStop) START_NOT_STICKY else START_STICKY
     }
     override fun onDestroy() {
-        runCatching { nativeIsland.dismiss() }
+        settings.monitorServiceStoppedAt = System.currentTimeMillis()
+        runCatching { nativeIsland.dismiss("监测服务销毁") }
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         scope.cancel()
         BatteryStateHolder.clear()
         super.onDestroy()
     }
     override fun onBind(intent: Intent?): IBinder? = null
     companion object {
+        const val FOREGROUND_NOTIFICATION_ID = 1
         const val ACTION_STOP="com.batterykeeper.app.STOP_MONITOR"
         fun start(context: Context) { context.startForegroundService(Intent(context,BatteryMonitorService::class.java)) }
         fun stop(context: Context) { context.startService(Intent(context,BatteryMonitorService::class.java).setAction(ACTION_STOP)) }

@@ -22,8 +22,8 @@ android {
         applicationId = "com.batterykeeper.app"
         minSdk = 34
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.5.2"
+        versionCode = 12
+        versionName = "1.5.3"
 
         // 仅打包 arm64（小米17 及所有现代旗舰均为 arm64），ML Kit OCR so 从 4 个 ABI 减到 1 个，体积约降 2/3
         ndk {
@@ -32,7 +32,7 @@ android {
     }
 
     signingConfigs {
-        create("release") {
+        create("batteryKeeperFixed") {
             if (keystorePropsFile.exists()) {
                 storeFile = rootProject.file(keystoreProps["storeFile"] as String)
                 storePassword = keystoreProps["storePassword"] as String
@@ -43,13 +43,19 @@ android {
     }
 
     buildTypes {
+        debug {
+            // CI 写入 keystore.properties 后，Debug 包也使用同一张永久证书，避免每次 Runner 随机换签名。
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("batteryKeeperFixed")
+            }
+        }
         release {
             // 启用混淆与资源压缩；离线中文 OCR 模型约占安装包主要体积
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (keystorePropsFile.exists()) {
-                signingConfig = signingConfigs.getByName("release")
+                signingConfig = signingConfigs.getByName("batteryKeeperFixed")
             }
         }
     }

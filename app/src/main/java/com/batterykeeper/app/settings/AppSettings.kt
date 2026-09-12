@@ -75,6 +75,56 @@ class AppSettings(context: Context) {
         get() = prefs.getLong("full_charge_time", 0)
         set(v) = prefs.edit().putLong("full_charge_time", v).apply()
 
+    /** 监测服务最近一次采样/心跳的墙钟时间（ms） */
+    var monitorHeartbeatTime: Long
+        get() = prefs.getLong(KEY_MONITOR_HEARTBEAT, 0L)
+        set(v) = prefs.edit().putLong(KEY_MONITOR_HEARTBEAT, v).apply()
+
+    /** 监测服务本次启动时间（ms） */
+    var monitorServiceStartedAt: Long
+        get() = prefs.getLong(KEY_MONITOR_STARTED, 0L)
+        set(v) = prefs.edit().putLong(KEY_MONITOR_STARTED, v).apply()
+
+    /** 监测服务最近停止时间（ms） */
+    var monitorServiceStoppedAt: Long
+        get() = prefs.getLong(KEY_MONITOR_STOPPED, 0L)
+        set(v) = prefs.edit().putLong(KEY_MONITOR_STOPPED, v).apply()
+
+    /** 最近采样时的 plugged/status，供超级岛诊断显示 */
+    var monitorLastPlugged: Int
+        get() = prefs.getInt(KEY_MONITOR_LAST_PLUGGED, 0)
+        set(v) = prefs.edit().putInt(KEY_MONITOR_LAST_PLUGGED, v).apply()
+
+    var monitorLastStatus: Int
+        get() = prefs.getInt(KEY_MONITOR_LAST_STATUS, 0)
+        set(v) = prefs.edit().putInt(KEY_MONITOR_LAST_STATUS, v).apply()
+
+    /** 超级岛最近一次 notify(1501) 的时间、原因和累计次数 */
+    var islandLastPostTime: Long
+        get() = prefs.getLong(KEY_ISLAND_LAST_POST, 0L)
+        set(v) = prefs.edit().putLong(KEY_ISLAND_LAST_POST, v).apply()
+
+    var islandLastPostReason: String
+        get() = prefs.getString(KEY_ISLAND_LAST_POST_REASON, "尚未投递") ?: "尚未投递"
+        set(v) = prefs.edit().putString(KEY_ISLAND_LAST_POST_REASON, v).apply()
+
+    var islandPostCount: Int
+        get() = prefs.getInt(KEY_ISLAND_POST_COUNT, 0)
+        set(v) = prefs.edit().putInt(KEY_ISLAND_POST_COUNT, v).apply()
+
+    var islandRecoveryCount: Int
+        get() = prefs.getInt(KEY_ISLAND_RECOVERY_COUNT, 0)
+        set(v) = prefs.edit().putInt(KEY_ISLAND_RECOVERY_COUNT, v).apply()
+
+    /** BatteryKeeper 主动 cancel(1501) 的最近时间和原因。 */
+    var islandLastDismissTime: Long
+        get() = prefs.getLong(KEY_ISLAND_LAST_DISMISS, 0L)
+        set(v) = prefs.edit().putLong(KEY_ISLAND_LAST_DISMISS, v).apply()
+
+    var islandLastDismissReason: String
+        get() = prefs.getString(KEY_ISLAND_LAST_DISMISS_REASON, "从未主动取消") ?: "从未主动取消"
+        set(v) = prefs.edit().putString(KEY_ISLAND_LAST_DISMISS_REASON, v).apply()
+
     private companion object {
         const val KEY_CHARGING_INTERVAL = "charging_interval"
         const val KEY_IDLE_INTERVAL = "idle_interval"
@@ -87,5 +137,17 @@ class AppSettings(context: Context) {
         const val KEY_SELF_CYCLES = "self_cycles"
         const val KEY_SELF_DISCHARGED = "self_discharged"
         const val KEY_LAST_IMPORT_URI = "last_import_uri"
+
+        const val KEY_MONITOR_HEARTBEAT = "diag_monitor_heartbeat"
+        const val KEY_MONITOR_STARTED = "diag_monitor_started"
+        const val KEY_MONITOR_STOPPED = "diag_monitor_stopped"
+        const val KEY_MONITOR_LAST_PLUGGED = "diag_monitor_last_plugged"
+        const val KEY_MONITOR_LAST_STATUS = "diag_monitor_last_status"
+        const val KEY_ISLAND_LAST_POST = "diag_island_last_post"
+        const val KEY_ISLAND_LAST_POST_REASON = "diag_island_last_post_reason"
+        const val KEY_ISLAND_POST_COUNT = "diag_island_post_count"
+        const val KEY_ISLAND_RECOVERY_COUNT = "diag_island_recovery_count"
+        const val KEY_ISLAND_LAST_DISMISS = "diag_island_last_dismiss"
+        const val KEY_ISLAND_LAST_DISMISS_REASON = "diag_island_last_dismiss_reason"
     }
 }

@@ -39,6 +39,7 @@ import com.batterykeeper.app.ui.theme.Orange
 import com.batterykeeper.app.ui.theme.TxtSecondary
 import com.batterykeeper.app.ui.theme.TxtTertiary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -62,9 +63,12 @@ fun SettingsScreen(vm: BatteryViewModel) {
     var islandOn by remember { mutableStateOf(vm.settings.nativeIslandEnabled) }
     var islandStatus by remember { mutableStateOf<XiaomiIslandController.IslandStatus?>(null) }
 
-    LaunchedEffect(Unit, islandOn) {
-        islandStatus = withContext(Dispatchers.IO) {
-            XiaomiIslandController(context.applicationContext).status()
+    LaunchedEffect(islandOn, monitorOn) {
+        while (true) {
+            islandStatus = withContext(Dispatchers.IO) {
+                XiaomiIslandController(context.applicationContext).status()
+            }
+            delay(2_000)
         }
     }
 
@@ -154,7 +158,7 @@ fun SettingsScreen(vm: BatteryViewModel) {
                         onCheckedChange = { on ->
                             islandOn = on
                             vm.settings.nativeIslandEnabled = on
-                            if (!on) XiaomiIslandController(context.applicationContext).dismiss()
+                            if (!on) XiaomiIslandController(context.applicationContext).dismiss("用户关闭超级岛")
                         },
                         colors = SwitchDefaults.colors(checkedTrackColor = Orange),
                     )
@@ -190,6 +194,57 @@ fun SettingsScreen(vm: BatteryViewModel) {
                         color = TxtTertiary,
                     )
                 }
+
+                if (st != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("超级岛诊断", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "通知总开关：${if (st.notificationsEnabled) "开启" else "关闭"} · " +
+                            "统一通知 #1：${if (st.unifiedNotificationActive) "存在" else "不存在"} · " +
+                            "焦点参数：${if (st.focusPayloadActive) "存在" else "无"}",
+                        fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 5.dp),
+                    )
+                    Text(
+                        "监测心跳：${if (st.monitorHeartbeatFresh) "正常" else "超时/未运行"}（${ageText(st.monitorHeartbeatTime)}） · " +
+                            "plugged=${st.monitorLastPlugged} · status=${st.monitorLastStatus}",
+                        fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Text(
+                        "最近投递：${ageText(st.lastPostTime)} · ${st.lastPostReason} · " +
+                            "累计 ${st.postCount} 次 / 自动恢复 ${st.recoveryCount} 次",
+                        fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Text(
+                        "最近主动取消：${ageText(st.lastDismissTime)} · ${st.lastDismissReason}",
+                        fontSize = 10.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Text(
+                        "固定签名 SHA-256：${st.signingCertSha256}",
+                        fontSize = 9.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 5.dp),
+                    )
+                    Text(
+                        "小米平台 App ID：${if (st.officialAppIdConfigured) "已配置" else "未配置（个人自用模式）"} · " +
+                            "构建：${if (st.debuggable) "Debug" else "Release"}",
+                        fontSize = 10.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 4.dp),
+                    )
+
+                    val diagnosis = when {
+                        !st.notificationsEnabled -> "⚠ 系统通知总开关已关闭，超级岛无法稳定工作。"
+                        st.monitorHeartbeatFresh && st.monitorLastPlugged != 0 && st.unifiedNotificationActive && st.focusPayloadActive ->
+                            "若此刻摄像头区域已经没有岛：统一通知 #1 及焦点参数仍存活，说明是 HyperOS SystemUI 收起/权限策略，不是 BatteryKeeper 主动取消。"
+                        st.monitorHeartbeatFresh && st.monitorLastPlugged != 0 && (!st.unifiedNotificationActive || !st.focusPayloadActive) ->
+                            "已插电且监测服务存活，但统一通知或焦点参数缺失；v1.5.3 会在下一次采样自动补发，并累计“自动恢复”次数。"
+                        !st.monitorHeartbeatFresh ->
+                            "监测心跳已超时；优先检查后台运行、自启动和省电限制，服务被杀后无法维持超级岛。"
+                        else -> "当前诊断未发现异常；插电后观察统一通知 #1、焦点参数、心跳和自动恢复次数。"
+                    }
+                    Text(
+                        diagnosis,
+                        fontSize = 10.5.sp,
+                        color = if (diagnosis.startsWith("⚠")) Orange else TxtSecondary,
+                        modifier = Modifier.padding(top = 7.dp),
+                    )
+                }
             }
         }
 
@@ -223,6 +278,17 @@ fun SettingsScreen(vm: BatteryViewModel) {
             color = TxtTertiary,
             modifier = Modifier.padding(vertical = 16.dp).align(Alignment.CenterHorizontally),
         )
+    }
+}
+
+private fun ageText(timestamp: Long): String {
+    if (timestamp <= 0L) return "无记录"
+    val deltaSec = ((System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 1000L)
+    return when {
+        deltaSec < 5 -> "刚刚"
+        deltaSec < 60 -> "${deltaSec}秒前"
+        deltaSec < 3600 -> "${deltaSec / 60}分钟前"
+        else -> "${deltaSec / 3600}小时前"
     }
 }
 

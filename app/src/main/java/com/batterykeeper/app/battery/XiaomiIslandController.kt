@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Bundle
@@ -13,13 +15,16 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.batterykeeper.app.MainActivity
 import com.batterykeeper.app.R
+import com.batterykeeper.app.settings.AppSettings
 import org.json.JSONObject
 import kotlin.math.abs
+import java.security.MessageDigest
 import java.util.Locale
 
 /** Xiaomi HyperOS 原生超级岛控制器。 */
 class XiaomiIslandController(private val context: Context) {
     private val notificationManager = context.getSystemService(NotificationManager::class.java)
+    private val settings = AppSettings(context)
     private var lastLevel: Int? = null
     private var lastPowerW: Float? = null
     private var lastTempC: Float? = null
@@ -28,7 +33,11 @@ class XiaomiIslandController(private val context: Context) {
     private var lastUpdateElapsed = 0L
     private var visible = false
 
-    init { ensureChannel() }
+    init {
+        ensureChannel()
+        // v1.5.3 及更早版本使用 #1501 作为独立岛通知。升级到统一通知后主动清理旧卡片。
+        notificationManager.cancel(LEGACY_ISLAND_NOTIFICATION_ID)
+    }
 
     /** 官方定义：3 = HyperOS 3，支持小米超级岛。 */
     fun protocolVersion(): Int = runCatching {
@@ -55,21 +64,45 @@ class XiaomiIslandController(private val context: Context) {
             ?.getBoolean("canShowFocus", false) == true
     }.getOrDefault(false)
 
-    fun status() = IslandStatus(protocolVersion(), systemSupportsIsland(), hasFocusPermission())
+    fun status(): IslandStatus {
+        val now = System.currentTimeMillis()
+        val heartbeat = settings.monitorHeartbeatTime
+        return IslandStatus(
+            protocolVersion = protocolVersion(),
+            systemSupported = systemSupportsIsland(),
+            focusPermission = hasFocusPermission(),
+            notificationsEnabled = notificationManager.areNotificationsEnabled(),
+            unifiedNotificationActive = isNotificationActive(NOTIFICATION_ID),
+            focusPayloadActive = activeNotificationHasFocusPayload(),
+            monitorHeartbeatTime = heartbeat,
+            monitorHeartbeatFresh = heartbeat > 0L && now - heartbeat < HEARTBEAT_STALE_MS,
+            monitorLastPlugged = settings.monitorLastPlugged,
+            monitorLastStatus = settings.monitorLastStatus,
+            lastPostTime = settings.islandLastPostTime,
+            lastPostReason = settings.islandLastPostReason,
+            postCount = settings.islandPostCount,
+            recoveryCount = settings.islandRecoveryCount,
+            lastDismissTime = settings.islandLastDismissTime,
+            lastDismissReason = settings.islandLastDismissReason,
+            signingCertSha256 = signingCertificateSha256(),
+            officialAppIdConfigured = officialAppIdConfigured(),
+            debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+        )
+    }
 
     /**
      * 只要仍连接电源就保持超级岛；只有真正拔掉电源时才下岛。
      * HyperOS 可能在热保护、满充保护、旁路供电等情况下短暂把 status 变为 NOT_CHARGING，
      * 因此不能用 isCharging 作为岛生命周期条件。
      */
-    fun update(snapshot: BatterySnapshot, tierName: String, force: Boolean = false) {
+    fun update(snapshot: BatterySnapshot, tierName: String, force: Boolean = false): Boolean {
         if (snapshot.plugged == 0) {
-            dismiss()
-            return
+            dismiss("拔掉电源")
+            return false
         }
         if (!systemSupportsIsland()) {
-            dismiss()
-            return
+            dismiss("系统未检测到超级岛能力")
+            return false
         }
 
         val now = android.os.SystemClock.elapsedRealtime()
@@ -79,11 +112,24 @@ class XiaomiIslandController(private val context: Context) {
         val powerChanged = lastPowerW?.let { abs(it - snapshot.powerW) >= 1f } ?: true
         val tempChanged = lastTempC?.let { abs(it - snapshot.tempC) >= 0.5f } ?: true
         val intervalPassed = now - lastUpdateElapsed >= MIN_UPDATE_MS
+        val focusPayloadActive = activeNotificationHasFocusPayload()
+        val recoveringMissingNotification = visible && !focusPayloadActive
 
-        if (!force && visible && !levelChanged && !tierChanged && !plugChanged &&
-            !(intervalPassed && (powerChanged || tempChanged))) return
+        if (!force && visible && !recoveringMissingNotification && !levelChanged && !tierChanged && !plugChanged &&
+            !(intervalPassed && (powerChanged || tempChanged))) return true
 
         notificationManager.notify(NOTIFICATION_ID, buildNotification(snapshot, tierName))
+        settings.islandLastPostTime = System.currentTimeMillis()
+        settings.islandLastPostReason = when {
+            recoveringMissingNotification -> "检测到统一通知丢失焦点参数，自动补发"
+            force -> "电源/状态变化，强制更新"
+            !visible -> "首次上岛"
+            else -> "温度/功率更新"
+        }
+        settings.islandPostCount = settings.islandPostCount + 1
+        if (recoveringMissingNotification) {
+            settings.islandRecoveryCount = settings.islandRecoveryCount + 1
+        }
         visible = true
         lastLevel = snapshot.level
         lastPowerW = snapshot.powerW
@@ -91,10 +137,20 @@ class XiaomiIslandController(private val context: Context) {
         lastTier = tierName
         lastPlugged = snapshot.plugged
         lastUpdateElapsed = now
+        return true
     }
 
-    fun dismiss() {
-        notificationManager.cancel(NOTIFICATION_ID)
+    /**
+     * 只清理“岛状态”，不取消通知。
+     * v1.5.3 起超级岛通知与前台监测通知合并为同一个 #1；前台服务运行期间必须保留该通知。
+     * 退出岛时由 BatteryMonitorService 用普通监测内容覆盖同一个 #1。
+     */
+    fun dismiss(reason: String = "主动取消") {
+        val wasActive = visible || activeNotificationHasFocusPayload()
+        if (wasActive) {
+            settings.islandLastDismissTime = System.currentTimeMillis()
+            settings.islandLastDismissReason = reason
+        }
         visible = false
         lastLevel = null
         lastPowerW = null
@@ -103,6 +159,38 @@ class XiaomiIslandController(private val context: Context) {
         lastPlugged = null
         lastUpdateElapsed = 0L
     }
+
+    private fun isNotificationActive(id: Int): Boolean = runCatching {
+        notificationManager.activeNotifications.any { it.id == id }
+    }.getOrDefault(false)
+
+    private fun activeNotificationHasFocusPayload(): Boolean = runCatching {
+        notificationManager.activeNotifications
+            .firstOrNull { it.id == NOTIFICATION_ID }
+            ?.notification
+            ?.extras
+            ?.getString(FOCUS_PARAM_KEY)
+            ?.isNotBlank() == true
+    }.getOrDefault(false)
+
+    private fun officialAppIdConfigured(): Boolean = runCatching {
+        val info = context.packageManager.getApplicationInfo(
+            context.packageName,
+            PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
+        )
+        !info.metaData?.getString("com.xiaomi.xms.APP_ID").isNullOrBlank()
+    }.getOrDefault(false)
+
+    private fun signingCertificateSha256(): String = runCatching {
+        val info = context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
+        )
+        val cert = info.signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
+            ?: return@runCatching "未知"
+        MessageDigest.getInstance("SHA-256").digest(cert)
+            .joinToString(":") { "%02X".format(it.toInt() and 0xFF) }
+    }.getOrDefault("未知")
 
     private fun ensureChannel() {
         notificationManager.createNotificationChannel(
@@ -254,15 +342,34 @@ class XiaomiIslandController(private val context: Context) {
         val protocolVersion: Int,
         val systemSupported: Boolean,
         val focusPermission: Boolean,
+        val notificationsEnabled: Boolean,
+        val unifiedNotificationActive: Boolean,
+        val focusPayloadActive: Boolean,
+        val monitorHeartbeatTime: Long,
+        val monitorHeartbeatFresh: Boolean,
+        val monitorLastPlugged: Int,
+        val monitorLastStatus: Int,
+        val lastPostTime: Long,
+        val lastPostReason: String,
+        val postCount: Int,
+        val recoveryCount: Int,
+        val lastDismissTime: Long,
+        val lastDismissReason: String,
+        val signingCertSha256: String,
+        val officialAppIdConfigured: Boolean,
+        val debuggable: Boolean,
     )
 
     companion object {
         const val CHANNEL_ID = "xiaomi_native_island"
-        const val NOTIFICATION_ID = 1501
+        // 与前台监测服务共用同一个通知 ID，避免通知栏出现两张 BatteryKeeper 卡片。
+        const val NOTIFICATION_ID = 1
+        private const val LEGACY_ISLAND_NOTIFICATION_ID = 1501
         private const val FOCUS_PARAM_KEY = "miui.focus.param"
         private const val PIC_BATTERY = "miui.focus.pic_batterykeeper"
         private const val BUSINESS = "battery_charging"
         private const val MIN_UPDATE_MS = 5_000L
+        private const val HEARTBEAT_STALE_MS = 90_000L
         // 小米准入原则要求单次服务生命周期不超过 12 小时。
         private const val NOTIFICATION_TIMEOUT_MIN = 12 * 60
         private const val ISLAND_TIMEOUT_SEC = 12 * 60 * 60
