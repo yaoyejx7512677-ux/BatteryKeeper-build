@@ -22,8 +22,8 @@ android {
         applicationId = "com.batterykeeper.app"
         minSdk = 34
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.6.0"
+        versionCode = 18
+        versionName = "1.6.1"
 
         // 小米17 / HyperOS 目标设备均为 arm64，只保留单 ABI。
         ndk {

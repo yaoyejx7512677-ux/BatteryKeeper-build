@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,7 +62,12 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun ReportsScreen(vm: BatteryViewModel) {
+fun ReportsScreen(
+    vm: BatteryViewModel,
+    autoOpenImagePicker: Boolean = false,
+    imagePickerRequestToken: Long = 0L,
+    onAutoImagePickerConsumed: () -> Unit = {},
+) {
     val records by vm.cycleRecords.collectAsState()
     val dailies by vm.dailyStats.collectAsState()
     val reports by vm.reports.collectAsState()
@@ -275,6 +281,16 @@ fun ReportsScreen(vm: BatteryViewModel) {
                     .onFailure { importMsg = "识别失败：${it.message}" }
                 importing = false
             }
+        }
+    }
+
+
+    LaunchedEffect(imagePickerRequestToken) {
+        if (autoOpenImagePicker && imagePickerRequestToken != 0L && !importing) {
+            onAutoImagePickerConsumed()
+            imgPicker.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+            )
         }
     }
 

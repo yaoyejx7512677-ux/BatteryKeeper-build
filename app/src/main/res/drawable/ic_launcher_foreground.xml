@@ -4,18 +4,25 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 电池外形 -->
+    <!-- v1.6.1：更轻、更修长的电池轮廓；蓝白主色贴合 HyperOS 桌面图标，橙色只保留品牌点缀。 -->
     <path
-        android:fillColor="#2A3346"
-        android:strokeColor="#8A94A6"
-        android:strokeWidth="3"
-        android:pathData="M38,34 L70,34 A6,6 0 0 1 76,40 L76,68 A6,6 0 0 1 70,74 L38,74 A6,6 0 0 1 32,68 L32,40 A6,6 0 0 1 38,34 Z" />
-    <!-- 电池正极凸起 -->
+        android:fillColor="#14223A"
+        android:pathData="M36,24 C32,24 29,27 29,31 L29,77 C29,81 32,84 36,84 L72,84 C76,84 79,81 79,77 L79,31 C79,27 76,24 72,24 Z" />
     <path
-        android:fillColor="#8A94A6"
-        android:pathData="M48,28 L60,28 L60,33 L48,33 Z" />
-    <!-- 闪电 -->
+        android:fillColor="#00000000"
+        android:strokeColor="#DCEBFF"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round"
+        android:pathData="M41,30 L67,30 C70.3,30 73,32.7 73,36 L73,72 C73,75.3 70.3,78 67,78 L41,78 C37.7,78 35,75.3 35,72 L35,36 C35,32.7 37.7,30 41,30 Z" />
     <path
-        android:fillColor="#FF8A3D"
-        android:pathData="M57,38 L44,56 L53,56 L50,70 L64,50 L55,50 Z" />
+        android:fillColor="#DCEBFF"
+        android:pathData="M48,24 L60,24 C61.7,24 63,25.3 63,27 L63,29 L45,29 L45,27 C45,25.3 46.3,24 48,24 Z" />
+    <!-- 轻量电量条 -->
+    <path
+        android:fillColor="#4DA3FF"
+        android:pathData="M40,67 L68,67 L68,72 C68,73.1 67.1,74 66,74 L42,74 C40.9,74 40,73.1 40,72 Z" />
+    <!-- 品牌闪电：收窄，避免视觉“胖” -->
+    <path
+        android:fillColor="#FF9A50"
+        android:pathData="M57.5,37 L47,53 L53.2,53 L50.2,68 L61,50 L55.1,50 Z" />
 </vector>

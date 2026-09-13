@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">电池管家</string>
+    <string name="shortcut_system_battery">系统电池</string>
+    <string name="shortcut_system_battery_long">打开系统电池与用电设置</string>
+    <string name="shortcut_toggle_monitor">开关监测</string>
+    <string name="shortcut_toggle_monitor_long">快速开启或停止电池监测</string>
+    <string name="shortcut_import_image">导入截图</string>
+    <string name="shortcut_import_image_long">从相册识别电池健康截图</string>
+    <string name="shortcut_recent_charge">最近记录</string>
+    <string name="shortcut_recent_charge_long">查看最近充电记录</string>
 </resources>
