@@ -209,7 +209,7 @@ class XiaomiIslandController(private val context: Context) {
     }
 
     private fun buildNotification(snapshot: BatterySnapshot, tierName: String): Notification {
-        val power = snapshot.powerW.display()
+        val power = snapshot.powerW.display(2)
         val temp = if (snapshot.tempC.isFinite()) "%.1f℃".format(snapshot.tempC) else "—℃"
         val voltage = if (snapshot.voltageV.isFinite()) "%.2fV".format(snapshot.voltageV) else "—V"
         val current = if (snapshot.currentA.isFinite()) "%.2fA".format(abs(snapshot.currentA)) else "—A"
@@ -341,7 +341,7 @@ class XiaomiIslandController(private val context: Context) {
         if (tempC.isFinite()) String.format(Locale.US, "%.1f℃", tempC) else "—℃"
 
     private fun compactPower(powerW: Float): String =
-        if (powerW.isFinite()) String.format(Locale.US, "%.1fW", abs(powerW)) else "—W"
+        if (powerW.isFinite()) String.format(Locale.US, "%.2fW", abs(powerW)) else "—W"
 
     data class IslandStatus(
         val protocolVersion: Int,

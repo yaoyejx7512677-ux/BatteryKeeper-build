@@ -23,12 +23,12 @@ object CsvExporter {
        val page=db.sampleDao().page(cursor)
        if(page.isEmpty()) break
        page.forEach { s ->
-         out.write("采样,${fmt.format(java.util.Date(s.timestamp))},${s.level},${s.powerW},${s.currentA},${s.voltageV},${s.tempC},${s.status},${s.plugged},,,,\n")
+         out.write("采样,${fmt.format(java.util.Date(s.timestamp))},${s.level},${"%.2f".format(Locale.US, s.powerW)},${s.currentA},${s.voltageV},${s.tempC},${s.status},${s.plugged},,,,\n")
        }
        cursor=page.last().id
      }
      db.dailyStatsDao().all().first().forEach { d ->
-       out.write("日统计,${d.date},,,,,${d.avgTempC},,,${d.cycleCountEnd.takeIf { it>=0 } ?: ""},${d.chargedMah},${d.drainedMah},${d.chargeSessions}\n")
+       out.write("日统计,${d.date},,,,,${d.avgTempC},,,${d.cycleCountEnd.takeIf { it>=0 } ?: ""},${"%.1f".format(Locale.US, d.chargedMah.toDouble())},${"%.1f".format(Locale.US, d.drainedMah.toDouble())},${d.chargeSessions}\n")
      }
    }
    FileProvider.getUriForFile(context,"${context.packageName}.fileprovider",file)

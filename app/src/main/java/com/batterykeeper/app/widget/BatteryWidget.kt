@@ -143,7 +143,7 @@ class BatteryWidget : GlanceAppWidget() {
             Spacer(GlanceModifier.width(8.dp))
             Column {
                 Text(
-                    "${snap.powerW.display()}W",
+                    "${snap.powerW.display(2)}W",
                     style = TextStyle(
                         color = if (snap.isCharging) green else white,
                         fontSize = 20.sp, fontWeight = FontWeight.Bold,
@@ -176,7 +176,7 @@ class BatteryWidget : GlanceAppWidget() {
             )
             Spacer(GlanceModifier.height(4.dp))
             Text(
-                "${snap.powerW.display()} W",
+                "${snap.powerW.display(2)} W",
                 style = TextStyle(
                     color = if (snap.isCharging) green else white,
                     fontSize = 30.sp, fontWeight = FontWeight.Bold,

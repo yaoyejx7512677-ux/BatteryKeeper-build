@@ -16,6 +16,7 @@ data class BatterySnapshot(
     val health: Int,              // BATTERY_HEALTH_*
     val chargeCounterMah: Int,    // 当前电量 μAh→mAh（不支持时 -1）
     val cycleCount: Int,          // 系统循环次数（不支持时 -1）
+    val chargeTimeRemainingMs: Long, // 系统预计充满剩余时间 ms（不支持时 -1）
 ) {
     val isCharging: Boolean
         get() = status == BatteryManager.BATTERY_STATUS_CHARGING ||

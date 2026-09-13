@@ -136,7 +136,7 @@ fun ChartsScreen(vm: BatteryViewModel) {
         GlassCard(modifier = Modifier.weight(0.43f), contentPadding = 9.dp) {
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MetricCompact(summary?.avgDrainW?.let { "%.1f".format(it) } ?: "—", "W", "平均放电")
+                MetricCompact(summary?.avgDrainW?.let { "%.2f".format(it) } ?: "—", "W", "平均放电")
                 MetricCompact(summary?.drainShare?.let { "%.0f".format(it) } ?: "—", "%", "放电占比")
             }
             Spacer(Modifier.weight(1f))

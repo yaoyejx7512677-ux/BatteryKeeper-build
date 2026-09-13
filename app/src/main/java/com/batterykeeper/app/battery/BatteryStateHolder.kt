@@ -25,7 +25,7 @@ object BatteryStateHolder {
     data class SessionInfo(
         val startTime: Long,
         val startLevel: Int,
-        val energyMah: Int,
+        val energyMah: Double,
         val peakPowerW: Float,
         val avgPowerW: Float,
     )

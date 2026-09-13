@@ -11,3 +11,6 @@ object MeasurementMath {
     fun overlapMs(start: Long, end: Long, from: Long, to: Long): Long =
         (minOf(end,to)-maxOf(start,from)).coerceAtLeast(0)
 }
+
+/** mAh 统一展示 1 位小数；数据库仍保持原有整数 schema，避免升级迁移风险。 */
+fun Number.displayMah(): String = "%.1f".format(toDouble())

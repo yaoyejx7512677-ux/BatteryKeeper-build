@@ -120,7 +120,7 @@ class BatteryMonitorService : Service() {
                 BatteryStateHolder.SessionInfo(
                     sessionStart!!.timestamp,
                     sessionStart!!.level,
-                    energy.toInt(),
+                    energy,
                     peak,
                     if (duration > 0) (weightedPower / duration).toFloat() else 0f,
                 ),
@@ -169,7 +169,7 @@ class BatteryMonitorService : Service() {
         if (!islandShown && (changed || now - lastNotification >= 15_000)) {
             getSystemService(NotificationManager::class.java).notify(
                 FOREGROUND_NOTIFICATION_ID,
-                notification("${s.stateName} · ${s.level}% · ${s.powerW.display()} W（电池侧）"),
+                notification("${s.stateName} · ${s.level}% · ${s.powerW.display(2)} W（电池侧）"),
             )
             lastNotification = now
         } else if (islandShown) lastNotification = now

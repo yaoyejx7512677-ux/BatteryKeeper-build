@@ -13,18 +13,6 @@
     </shortcut>
 
     <shortcut
-        android:shortcutId="toggle_monitor"
-        android:enabled="true"
-        android:icon="@drawable/ic_shortcut_monitor"
-        android:shortcutShortLabel="@string/shortcut_toggle_monitor"
-        android:shortcutLongLabel="@string/shortcut_toggle_monitor_long">
-        <intent
-            android:action="com.batterykeeper.app.action.TOGGLE_MONITOR"
-            android:targetPackage="com.batterykeeper.app"
-            android:targetClass="com.batterykeeper.app.ShortcutRouterActivity" />
-    </shortcut>
-
-    <shortcut
         android:shortcutId="import_health_image"
         android:enabled="true"
         android:icon="@drawable/ic_shortcut_import"
@@ -32,18 +20,6 @@
         android:shortcutLongLabel="@string/shortcut_import_image_long">
         <intent
             android:action="com.batterykeeper.app.action.IMPORT_IMAGE"
-            android:targetPackage="com.batterykeeper.app"
-            android:targetClass="com.batterykeeper.app.MainActivity" />
-    </shortcut>
-
-    <shortcut
-        android:shortcutId="recent_charge"
-        android:enabled="true"
-        android:icon="@drawable/ic_shortcut_history"
-        android:shortcutShortLabel="@string/shortcut_recent_charge"
-        android:shortcutLongLabel="@string/shortcut_recent_charge_long">
-        <intent
-            android:action="com.batterykeeper.app.action.OPEN_POWER"
             android:targetPackage="com.batterykeeper.app"
             android:targetClass="com.batterykeeper.app.MainActivity" />
     </shortcut>

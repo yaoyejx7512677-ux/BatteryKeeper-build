@@ -57,6 +57,11 @@ object BatterySampler {
         // Android 14+ 公开广播字段；设备未上报时保留未知
         val cycles = intent?.getIntExtra(BatteryManager.EXTRA_CYCLE_COUNT, -1) ?: -1
 
+        // Android 公开 API：部分设备会直接给出“距离充满还有多久”。不支持时返回 -1。
+        val chargeTimeRemainingMs = runCatching { bm.computeChargeTimeRemaining() }
+            .getOrDefault(-1L)
+            .takeIf { it > 0L } ?: -1L
+
         val levelPct = if (level >= 0 && scale > 0) level * 100 / scale else -1
 
         return BatterySnapshot(
@@ -71,6 +76,7 @@ object BatterySampler {
             health = health,
             chargeCounterMah = chargeCounterMah,
             cycleCount = cycles,
+            chargeTimeRemainingMs = chargeTimeRemainingMs,
         )
     }
 

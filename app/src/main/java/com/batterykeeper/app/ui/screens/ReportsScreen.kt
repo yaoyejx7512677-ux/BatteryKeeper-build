@@ -1,5 +1,6 @@
 package com.batterykeeper.app.ui.screens
 
+import com.batterykeeper.app.battery.displayMah
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -148,7 +149,7 @@ fun ReportsScreen(
                             }
                             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                                 MetricCompact(if (r.healthPct > 0) "%.2f".format(r.healthPct) else "--", "%", "健康度")
-                                MetricCompact(if (r.fullChargeMah > 0) r.fullChargeMah.toString() else "--", "mAh", "满充容量")
+                                MetricCompact(if (r.fullChargeMah > 0) r.fullChargeMah.displayMah() else "--", "mAh", "满充容量")
                                 MetricCompact(if (r.cycleCount >= 0) r.cycleCount.toString() else "--", "次", "循环次数")
                             }
                         }
@@ -370,7 +371,7 @@ fun ReportsScreen(
                         "%", "健康度", valueColor = Green,
                     )
                     MetricCompact(
-                        if (latestHealthReport.fullChargeMah > 0) latestHealthReport.fullChargeMah.toString() else "--",
+                        if (latestHealthReport.fullChargeMah > 0) latestHealthReport.fullChargeMah.displayMah() else "--",
                         "mAh", "满充容量",
                     )
                     MetricCompact(
@@ -474,7 +475,7 @@ fun ReportsScreen(
                                 "%", "健康度", valueColor = Green,
                             )
                             MetricCompact(
-                                if (r.fullChargeMah > 0) "${r.fullChargeMah}" else "--",
+                                if (r.fullChargeMah > 0) r.fullChargeMah.displayMah() else "--",
                                 "mAh", "满充容量",
                             )
                             MetricCompact(
@@ -577,7 +578,7 @@ fun ReportsScreen(
                             Text(
                                 "循环 +${(stats.filter { it.cycleCountEnd >= 0 }.let { if (it.size >= 2) it.maxOf { r -> r.cycleCountEnd } - it.minOf { r -> r.cycleCountEnd } else "—" })} · " +
                                     "充电 ${stats.sumOf { it.chargeSessions }} 次 · " +
-                                    "充入 ${stats.sumOf { it.chargedMah } / 1000}Ah",
+                                    "充入 %.1fAh".format(stats.sumOf { it.chargedMah } / 1000.0),
                                 fontSize = 11.sp, color = TxtSecondary,
                             )
                         }
