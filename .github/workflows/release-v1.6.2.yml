@@ -1,0 +1,134 @@
+name: Publish BatteryKeeper 1.6.2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - '.github/workflows/release-v1.6.2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Skip if v1.6.2 already published
+        id: release_state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v1.6.2 >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 17
+        if: steps.release_state.outputs.exists != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        if: steps.release_state.outputs.exists != 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        if: steps.release_state.outputs.exists != 'true'
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Prepare permanent signing key
+        if: steps.release_state.outputs.exists != 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.BATTERYKEEPER_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.BATTERYKEEPER_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.BATTERYKEEPER_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.BATTERYKEEPER_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_B64"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          mkdir -p signing
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > signing/batterykeeper-fixed.jks
+          cat > keystore.properties <<EOF2
+          storeFile=signing/batterykeeper-fixed.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF2
+
+      - name: Verify v1.6.2 source
+        if: steps.release_state.outputs.exists != 'true'
+        run: |
+          grep -q 'versionCode = 19' app/build.gradle.kts
+          grep -q 'versionName = "1.6.2"' app/build.gradle.kts
+          grep -q 'system_battery' app/src/main/res/xml/shortcuts.xml
+          grep -q 'import_health_image' app/src/main/res/xml/shortcuts.xml
+          ! grep -q 'toggle_monitor' app/src/main/res/xml/shortcuts.xml
+          ! grep -q 'recent_charge' app/src/main/res/xml/shortcuts.xml
+          grep -q 'computeChargeTimeRemaining' app/src/main/java/com/batterykeeper/app/battery/BatterySampler.kt
+          grep -q '预计充满' app/src/main/java/com/batterykeeper/app/ui/screens/DashboardScreen.kt
+          grep -q 'display(2)' app/src/main/java/com/batterykeeper/app/ui/screens/DashboardScreen.kt
+          grep -q 'displayMah' app/src/main/java/com/batterykeeper/app/ui/screens/DashboardScreen.kt
+          ! grep -R -q 'import androidx.compose.foundation.layout.weight' app/src/main/java/com/batterykeeper/app/ui/screens
+
+      - name: Build formal Release
+        if: steps.release_state.outputs.exists != 'true'
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace clean assembleRelease bundleRelease
+
+      - name: Verify and prepare files
+        if: steps.release_state.outputs.exists != 'true'
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          BADGING="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK" | head -40)"
+          echo "$BADGING" | grep -q "package: name='com.batterykeeper.app' versionCode='19' versionName='1.6.2'"
+          if echo "$BADGING" | grep -q 'application-debuggable'; then
+            echo 'Refusing to publish debuggable APK'; exit 1
+          fi
+          $ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs "$APK"
+          APK_BYTES=$(stat -c%s "$APK")
+          echo "Release APK bytes: $APK_BYTES"
+          if [ "$APK_BYTES" -gt $((45 * 1024 * 1024)) ]; then
+            echo 'ERROR: Release APK exceeds 45 MiB size budget'; exit 1
+          fi
+          cp "$APK" BatteryKeeper-v1.6.2-release.apk
+          cp "$AAB" BatteryKeeper-v1.6.2-release.aab
+          sha256sum BatteryKeeper-v1.6.2-release.apk BatteryKeeper-v1.6.2-release.aab > BatteryKeeper-v1.6.2-SHA256SUMS.txt
+          cat > RELEASE_NOTES.md <<'EOF2'
+          ## BatteryKeeper 1.6.2
+
+          - 桌面长按快捷入口精简为“系统电池”和“导入截图”两项。
+          - 首页新增预计充满时间：优先采用 Android 系统 ETA，不支持时用容量与当前电流做保守估算；继续保持一屏布局。
+          - 功率统一显示两位小数，包括首页、功率页、最近充电记录、桌面小组件、通知/超级岛关键值。
+          - mAh 统计统一显示一位小数；实时充电会话在内存中保留小数精度，历史数据库 schema 不变，避免升级迁移风险。
+          - 当前电量仅在系统广播实际提供更细 scale 时显示两位小数；scale=100 时继续显示整数，避免伪精度。
+          - 合并 v1.6.1 Compose weight 导入编译修复。
+          - 继续使用固定签名正式 Release、R8、资源压缩和 arm64-v8a。
+          EOF2
+
+      - name: Publish GitHub Release
+        if: steps.release_state.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v1.6.2 \
+            BatteryKeeper-v1.6.2-release.apk \
+            BatteryKeeper-v1.6.2-release.aab \
+            BatteryKeeper-v1.6.2-SHA256SUMS.txt \
+            --target "$GITHUB_SHA" \
+            --title 'BatteryKeeper 1.6.2' \
+            --notes-file RELEASE_NOTES.md
