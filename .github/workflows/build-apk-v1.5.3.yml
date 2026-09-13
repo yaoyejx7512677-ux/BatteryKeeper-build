@@ -1,8 +1,6 @@
-name: Build BatteryKeeper 1.5.5 Fixed-Signed APK
+name: Build BatteryKeeper 1.6.0 Release APK
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -11,42 +9,17 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 35
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK 36
-        run: |
+      - uses: android-actions/setup-android@v3
+      - run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-
-      - name: Verify v1.5.5 source
-        run: |
-          grep -q 'versionCode = 15' app/build.gradle.kts
-          grep -q 'versionName = "1.5.5"' app/build.gradle.kts
-          grep -q 'FOREGROUND_NOTIFICATION_ID = 1' app/src/main/java/com/batterykeeper/app/battery/BatteryMonitorService.kt
-          grep -q 'const val NOTIFICATION_ID = 1' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
-          grep -q 'MIN_UPDATE_MS = 10_000L' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
-          grep -q 'POWER_DELTA_W = 3f' app/src/main/java/com/batterykeeper/app/battery/XiaomiIslandController.kt
-          grep -q '通知缺失恢复' app/src/main/java/com/batterykeeper/app/ui/screens/SettingsScreen.kt
-          grep -q 'HyperOS 3/4 / AIDL Health' app/src/main/java/com/batterykeeper/app/report/ReportImport.kt
-          grep -q 'abs(s.powerW)' app/src/main/java/com/batterykeeper/app/battery/BatteryMonitorService.kt
-          grep -q '热爱生活·为您充电！' app/src/main/java/com/batterykeeper/app/ui/screens/DashboardScreen.kt
-          grep -q 'PickVisualMedia' app/src/main/java/com/batterykeeper/app/ui/screens/ReportsScreen.kt
-          grep -q 'findLatestBugReport' app/src/main/java/com/batterykeeper/app/report/ReportFileLocator.kt
-          echo 'Verified BatteryKeeper v1.5.5 source'
-
       - name: Prepare permanent signing key
         env:
           KEYSTORE_B64: ${{ secrets.BATTERYKEEPER_KEYSTORE_B64 }}
@@ -54,10 +27,6 @@ jobs:
           KEY_ALIAS: ${{ secrets.BATTERYKEEPER_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.BATTERYKEEPER_KEY_PASSWORD }}
         run: |
-          test -n "$KEYSTORE_B64" || { echo 'Missing BATTERYKEEPER_KEYSTORE_B64'; exit 1; }
-          test -n "$STORE_PASSWORD" || { echo 'Missing BATTERYKEEPER_STORE_PASSWORD'; exit 1; }
-          test -n "$KEY_ALIAS" || { echo 'Missing BATTERYKEEPER_KEY_ALIAS'; exit 1; }
-          test -n "$KEY_PASSWORD" || { echo 'Missing BATTERYKEEPER_KEY_PASSWORD'; exit 1; }
           mkdir -p signing
           printf '%s' "$KEYSTORE_B64" | base64 --decode > signing/batterykeeper-fixed.jks
           cat > keystore.properties <<EOF2
@@ -66,27 +35,20 @@ jobs:
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
           EOF2
-          keytool -list -v -keystore signing/batterykeeper-fixed.jks -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" | grep 'SHA256:'
-
-      - name: Build fixed-signed Debug APK
+      - name: Build release
         run: |
+          grep -q 'versionCode = 17' app/build.gradle.kts
+          grep -q 'versionName = "1.6.0"' app/build.gradle.kts
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug
-
-      - name: Verify APK identity and signature
+          ./gradlew --no-daemon assembleRelease
+      - name: Verify release
         run: |
-          APK=app/build/outputs/apk/debug/app-debug.apk
+          APK=app/build/outputs/apk/release/app-release.apk
           $ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs "$APK"
-          $ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK" | head -1
-          cp "$APK" BatteryKeeper-v1.5.5-fixed-debug.apk
-          sha256sum BatteryKeeper-v1.5.5-fixed-debug.apk > BatteryKeeper-v1.5.5-fixed-debug.apk.sha256
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+          if $ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK" | grep -q 'application-debuggable'; then exit 1; fi
+          cp "$APK" BatteryKeeper-v1.6.0-release.apk
+      - uses: actions/upload-artifact@v4
         with:
-          name: BatteryKeeper-v1.5.5-Fixed-Signed-APK
-          path: |
-            BatteryKeeper-v1.5.5-fixed-debug.apk
-            BatteryKeeper-v1.5.5-fixed-debug.apk.sha256
-          if-no-files-found: error
+          name: BatteryKeeper-v1.6.0-Release-APK
+          path: BatteryKeeper-v1.6.0-release.apk
           retention-days: 30
