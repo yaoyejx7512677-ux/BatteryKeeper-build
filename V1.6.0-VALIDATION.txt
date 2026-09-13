@@ -1,0 +1,16 @@
+BatteryKeeper v1.6.0 validation
+================================
+Version: 1.6.0 (versionCode 17)
+
+Implemented:
+- Bottom navigation reduced to 4 icon-only items; height 54dp; Settings removed from nav.
+- Settings available from Reports top-right as an in-app dialog.
+- Dashboard and Charts no longer use verticalScroll; spacing/card heights compacted for one-screen core layout.
+- Full backup/restore added for samples, cycle records, charge sessions, daily stats, health reports and SharedPreferences settings.
+- Backup can be saved through Android CreateDocument, allowing installed cloud/document providers; restore uses OpenDocument.
+- Email/share backup targets Ben0102@qq.com through system share/email UI; no credential storage or silent sending.
+- Charge session accuracy: current integration retained; CHARGE_COUNTER delta used as fallback where supported; charging sampling gaps accepted up to 15 minutes; 30s disconnect grace; service restart may resume same session within 5 minutes; tiny legacy fragments hidden from recent/today summaries.
+- Release workflow produces signed non-debuggable APK/AAB with R8/resource shrinking and arm64-v8a.
+
+Static checks: PASS.
+Local Gradle compile could not run because the sandbox cannot resolve services.gradle.org (UnknownHostException). GitHub Actions remains the authoritative compile/release validation.

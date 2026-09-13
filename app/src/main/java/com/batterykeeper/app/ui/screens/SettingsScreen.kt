@@ -1,5 +1,8 @@
 package com.batterykeeper.app.ui.screens
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -10,11 +13,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.batterykeeper.app.backup.BackupManager
 import com.batterykeeper.app.battery.BatteryMonitorService
 import com.batterykeeper.app.battery.XiaomiIslandController
 import com.batterykeeper.app.ui.BatteryViewModel
@@ -39,12 +46,29 @@ import com.batterykeeper.app.ui.theme.Orange
 import com.batterykeeper.app.ui.theme.TxtSecondary
 import com.batterykeeper.app.ui.theme.TxtTertiary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
-fun SettingsScreen(vm: BatteryViewModel) {
+fun SettingsScreen(vm: BatteryViewModel, embedded: Boolean = false) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var backupMsg by remember { mutableStateOf<String?>(null) }
+    val exportBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) scope.launch {
+            runCatching { BackupManager.exportToUri(context, uri) }
+                .onSuccess { backupMsg = "✓ 备份已保存，可选择系统云盘/文件提供商同步到云端" }
+                .onFailure { backupMsg = "备份失败：${it.message}" }
+        }
+    }
+    val importBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            runCatching { BackupManager.restoreFromUri(context, uri) }
+                .onSuccess { r -> backupMsg = "✓ 已恢复：${r.samples} 条采样、${r.sessions} 条充电记录、${r.reports} 条报告" }
+                .onFailure { backupMsg = "恢复失败：${it.message}" }
+        }
+    }
     val appVersion = remember(context) {
         runCatching {
             context.packageManager.getPackageInfo(
@@ -75,18 +99,49 @@ fun SettingsScreen(vm: BatteryViewModel) {
     Column(
         Modifier
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = if (embedded) 6.dp else 16.dp),
     ) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
-            Column {
-                Text("设置", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    "电池管家 v$appVersion · Android ${android.os.Build.VERSION.RELEASE}",
-                    fontSize = 11.5.sp,
-                    color = TxtSecondary,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
+        if (!embedded) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
+                Column {
+                    Text("设置", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "电池管家 v$appVersion · Android ${android.os.Build.VERSION.RELEASE}",
+                        fontSize = 11.5.sp,
+                        color = TxtSecondary,
+                        modifier = Modifier.padding(top = 3.dp),
+                    )
+                }
             }
+        }
+
+        GlassCard(Modifier.padding(top = if (embedded) 0.dp else 2.dp)) {
+            CardTitle("数据备份与恢复")
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { exportBackup.launch("BatteryKeeper-v$appVersion-${System.currentTimeMillis()}.bkbak") },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x33FF8A3D), contentColor = Orange),
+                ) { Text("备份到云端", fontSize = 11.sp) }
+                Button(
+                    onClick = { importBackup.launch(arrayOf("application/zip", "application/octet-stream")) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x22FFFFFF), contentColor = TxtSecondary),
+                ) { Text("导回备份", fontSize = 11.sp) }
+            }
+            Spacer(Modifier.height(8.dp))
+            Button(
+                onClick = { scope.launch {
+                    runCatching { BackupManager.exportToCache(context) }
+                        .onSuccess { uri -> context.startActivity(Intent.createChooser(BackupManager.emailIntent(uri), "发送备份到 Ben0102@qq.com")) }
+                        .onFailure { backupMsg = "生成邮件备份失败：${it.message}" }
+                } },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0x264ADE80)),
+            ) { Text("发送备份到 Ben0102@qq.com", fontSize = 11.5.sp) }
+            backupMsg?.let { Text(it, fontSize = 10.5.sp, color = if (it.startsWith("✓")) TxtSecondary else Orange, modifier = Modifier.padding(top = 8.dp)) }
+            Text("备份包含采样、充电会话、报表和应用设置；云端位置由系统文件/云盘提供商选择。", fontSize = 9.5.sp, color = TxtTertiary, modifier = Modifier.padding(top = 6.dp))
         }
 
         GlassCard {
@@ -250,9 +305,9 @@ fun SettingsScreen(vm: BatteryViewModel) {
                         !st.monitorHeartbeatFresh ->
                             "⚠ 监测心跳已超时；优先检查后台运行、自启动和省电限制。"
                         st.monitorLastPlugged != 0 && !st.unifiedNotificationActive ->
-                            "⚠ 已插电但统一通知 #1 不存在；v1.5.4 仅在这种情况下自动恢复通知，避免无意义高频重发。"
+                            "⚠ 已插电但统一通知 #1 不存在；v1.5.5 仅在这种情况下自动恢复通知，避免无意义高频重发。"
                         st.monitorLastPlugged != 0 && st.unifiedNotificationActive && !st.focusPayloadActive ->
-                            "统一通知 #1 仍存在，但应用暂未读取到焦点参数。v1.5.4 不会因此立即补发；下一次正常 10 秒刷新会重新写入焦点参数。"
+                            "统一通知 #1 仍存在，但应用暂未读取到焦点参数。v1.5.5 不会因此立即补发；下一次正常 10 秒刷新会重新写入焦点参数。"
                         st.monitorLastPlugged != 0 && st.unifiedNotificationActive && !st.officialAppIdConfigured ->
                             "应用侧状态正常。当前为个人自用、未配置小米平台 App ID；若摄像头区域无岛，通常是 HyperOS SystemUI 收起/权限策略，应用无法强制长期常驻。"
                         st.monitorHeartbeatFresh && st.monitorLastPlugged != 0 && st.unifiedNotificationActive ->

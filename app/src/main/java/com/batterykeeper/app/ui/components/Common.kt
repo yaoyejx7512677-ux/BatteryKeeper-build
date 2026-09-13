@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.batterykeeper.app.ui.theme.CardBg
@@ -35,6 +36,7 @@ import com.batterykeeper.app.ui.theme.TxtTertiary
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
+    contentPadding: Dp = 18.dp,
     content: @Composable () -> Unit,
 ) {
     Column(
@@ -43,7 +45,7 @@ fun GlassCard(
             .clip(RoundedCornerShape(20.dp))
             .background(CardBg)
             .border(1.dp, CardBorder, RoundedCornerShape(20.dp))
-            .padding(18.dp),
+            .padding(contentPadding),
     ) { content() }
 }
 

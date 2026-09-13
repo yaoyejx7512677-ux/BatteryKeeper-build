@@ -43,22 +43,30 @@ class BatteryViewModel(app: Application) : AndroidViewModel(app) {
     val dailyStats: StateFlow<List<DailyStats>> = db.dailyStatsDao().all()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** 澎湃OS 检测报告历史 */
     val reports: StateFlow<List<HealthReport>> = db.healthReportDao().all()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** 最近一条有效检测报告 */
     val latestReport: HealthReport?
         get() = reports.value.lastOrNull { it.fullChargeMah > 0 || it.cycleCount > 0 }
 
+    /** 估算健康度 %（检测报告 > 满充估算 > 无） */
     private var reportHealth: Float? = null
     private val _healthPct = MutableStateFlow<Float?>(null)
     val healthPct: StateFlow<Float?> = _healthPct.asStateFlow()
 
     init {
         viewModelScope.launch {
+            // 检测报告数据变化时刷新健康度（报告优先于满充估算）
             db.healthReportDao().all().collect { list ->
                 val fromReport = list.lastOrNull { it.healthPct > 0 }
                 reportHealth = fromReport?.healthPct
-                if (fromReport != null) _healthPct.value = fromReport.healthPct else refreshHealthFromLocal()
+                if (fromReport != null) {
+                    _healthPct.value = fromReport.healthPct
+                } else {
+                    refreshHealthFromLocal()
+                }
             }
         }
     }
@@ -68,17 +76,24 @@ class BatteryViewModel(app: Application) : AndroidViewModel(app) {
         _healthPct.value = if (est > 0) est * 100f / settings.designCapacityMah else null
     }
 
+    /** 展示用循环次数：系统上报 > 检测报告 > 自算累计 */
     fun displayCycleCount(systemCount: Int, reportCycle: Int? = null): Int =
         systemCount.takeIf { it >= 0 }
             ?: reportCycle?.takeIf { it >= 0 }
             ?: settings.selfCycleCount
 
+    /** 报告导入（Bug 报告 ZIP） */
     suspend fun importBugReport(context: Context, uri: Uri): Result<HealthReport> =
-        runCatching { ReportImport.fromBugReport(context, uri) }
+        runCatching {
+            val r = ReportImport.fromBugReport(context, uri)
+            r
+        }
 
+    /** 报告导入（截图识别，单条兼容接口） */
     suspend fun importScreenshot(context: Context, uri: Uri): Result<HealthReport> =
         runCatching { ReportImport.fromScreenshot(context, uri) }
 
+    /** 报告导入（支持图2样式的一图多条历史记录） */
     suspend fun importScreenshotReports(context: Context, uri: Uri): Result<List<HealthReport>> =
         runCatching { ReportImport.fromScreenshotReports(context, uri) }
 
@@ -95,6 +110,7 @@ class BatteryViewModel(app: Application) : AndroidViewModel(app) {
         db.healthReportDao().insert(r)
     }
 
+    /** 批量保存截图历史，自动跳过已存在的同分钟/容量/循环记录。 */
     suspend fun saveReports(list: List<HealthReport>): Pair<Int, Int> {
         val existing = db.healthReportDao().snapshot().map {
             Triple(it.timestamp / 60_000L, it.fullChargeMah, it.cycleCount)
@@ -117,6 +133,7 @@ class BatteryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteReport(id: Long) = viewModelScope.launch { db.healthReportDao().delete(id) }
 
+    /** 今日统计 */
     data class TodayStats(val chargedMah: Int, val sessions: Int)
 
     private val _todayStats = MutableStateFlow(TodayStats(0, 0))
@@ -139,17 +156,26 @@ class BatteryViewModel(app: Application) : AndroidViewModel(app) {
         }
         val dayStart = cal.timeInMillis
         val activeStart = session.value?.startTime
-        val sessions = db.chargeSessionDao().since(dayStart).filter { it.startTime != activeStart }
+        val sessions = db.chargeSessionDao().since(dayStart)
+            .filter { it.startTime != activeStart }
+            .filter(::isMeaningfulSession)
         _todayStats.value = TodayStats(
             chargedMah = sessions.sumOf { it.energyMah },
             sessions = sessions.size,
         )
     }
 
+    /** 历史区间采样（供曲线页） */
     suspend fun samplesBetween(from: Long, to: Long) =
         db.sampleDao().between(from, to)
 
-    suspend fun latestSessions() = db.chargeSessionDao().latest(30)
+    suspend fun latestSessions() = db.chargeSessionDao().latest(60).filter(::isMeaningfulSession).take(30)
+
+    private fun isMeaningfulSession(s: com.batterykeeper.app.data.ChargeSession): Boolean {
+        val levelGain = ((s.endLevel ?: s.startLevel) - s.startLevel).coerceAtLeast(0)
+        val durationMs = ((s.endTime ?: s.startTime) - s.startTime).coerceAtLeast(0L)
+        return s.energyMah >= 5 || levelGain >= 2 || durationMs >= 3 * 60_000L
+    }
 
     suspend fun sampleCount() = db.sampleDao().count()
 

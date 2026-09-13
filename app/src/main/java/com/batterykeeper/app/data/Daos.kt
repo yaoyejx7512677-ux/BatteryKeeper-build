@@ -2,6 +2,7 @@ package com.batterykeeper.app.data
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
@@ -33,6 +34,12 @@ interface SampleDao {
 
     @Query("SELECT COUNT(*) FROM samples")
     suspend fun count(): Long
+
+    @Query("SELECT * FROM samples ORDER BY id ASC")
+    suspend fun snapshot(): List<Sample>
+
+    @Query("DELETE FROM samples")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -51,6 +58,12 @@ interface CycleRecordDao {
 
     @Query("SELECT COUNT(*) FROM cycle_records")
     suspend fun count(): Long
+
+    @Query("SELECT * FROM cycle_records ORDER BY id ASC")
+    suspend fun snapshot(): List<CycleRecord>
+
+    @Query("DELETE FROM cycle_records")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -75,6 +88,12 @@ interface ChargeSessionDao {
 
     @Query("SELECT COALESCE(SUM(energyMah),0) FROM charge_sessions WHERE startTime >= :since")
     suspend fun energySince(since: Long): Long
+
+    @Query("SELECT * FROM charge_sessions ORDER BY id ASC")
+    suspend fun snapshot(): List<ChargeSession>
+
+    @Query("DELETE FROM charge_sessions")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -90,6 +109,12 @@ interface DailyStatsDao {
 
     @Query("SELECT * FROM daily_stats WHERE date = :date LIMIT 1")
     suspend fun byDate(date: String): DailyStats?
+
+    @Query("SELECT * FROM daily_stats ORDER BY date ASC")
+    suspend fun snapshot(): List<DailyStats>
+
+    @Query("DELETE FROM daily_stats")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -111,4 +136,7 @@ interface HealthReportDao {
 
     @Query("SELECT COUNT(*) FROM health_reports")
     suspend fun count(): Long
+
+    @Query("DELETE FROM health_reports")
+    suspend fun clearAll()
 }

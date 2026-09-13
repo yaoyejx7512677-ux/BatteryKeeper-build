@@ -5,10 +5,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -16,7 +19,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -32,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.batterykeeper.app.export.CsvExporter
 import com.batterykeeper.app.report.ReportFileLocator
 import com.batterykeeper.app.report.ReportImport
@@ -63,6 +72,7 @@ fun ReportsScreen(vm: BatteryViewModel) {
     var importing by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var importMsg by remember { mutableStateOf<String?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf<com.batterykeeper.app.data.HealthReport?>(null) }
     var batchPreview by remember { mutableStateOf<List<com.batterykeeper.app.data.HealthReport>?>(null) }
     var deleteId by remember { mutableStateOf<Long?>(null) }
@@ -268,6 +278,24 @@ fun ReportsScreen(vm: BatteryViewModel) {
         }
     }
 
+    if (showSettings) {
+        Dialog(onDismissRequest = { showSettings = false }) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f),
+                shape = RoundedCornerShape(22.dp),
+                color = Color(0xFF171B1F),
+            ) {
+                Column(Modifier.padding(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("设置", fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+                        androidx.compose.material3.TextButton(onClick = { showSettings = false }) { Text("完成", color = Orange) }
+                    }
+                    Box(Modifier.weight(1f)) { SettingsScreen(vm, embedded = true) }
+                }
+            }
+        }
+    }
+
     val totalCycles = vm.displayCycleCount(
         snapshot?.cycleCount ?: -1,
         reports.lastOrNull { it.cycleCount > 0 }?.cycleCount,
@@ -279,8 +307,9 @@ fun ReportsScreen(vm: BatteryViewModel) {
             .padding(horizontal = 16.dp),
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(vertical = 14.dp),
+            Modifier.fillMaxWidth().padding(vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column {
                 Text("电池报告", fontSize = 21.sp, fontWeight = FontWeight.Bold)
@@ -288,6 +317,9 @@ fun ReportsScreen(vm: BatteryViewModel) {
                     "检测报告 · 循环计数 · 历史趋势",
                     fontSize = 11.5.sp, color = TxtSecondary, modifier = Modifier.padding(top = 3.dp),
                 )
+            }
+            IconButton(onClick = { showSettings = true }, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Filled.Settings, contentDescription = "设置", tint = TxtSecondary)
             }
         }
 
