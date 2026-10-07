@@ -126,13 +126,15 @@ jobs:
           if [ -d "$ANDROID_HOME/licenses" ]; then cp -a "$ANDROID_HOME/licenses" "$RUNNER_TEMP/sdk-export/licenses"; fi
           tar -C "$RUNNER_TEMP/sdk-export" -cf "$RUNNER_TEMP/android-sdk-35.tar" .
 
-      - name: Pack Gradle dependency cache
+      - name: Pack and split Gradle dependency cache
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p "$RUNNER_TEMP/gradle-cache-export"
           cp -a "$HOME/.gradle/caches" "$RUNNER_TEMP/gradle-cache-export/caches"
           tar -C "$RUNNER_TEMP/gradle-cache-export" -cf "$RUNNER_TEMP/gradle-cache.tar" .
+          split -b 400M -d -a 2 "$RUNNER_TEMP/gradle-cache.tar" "$RUNNER_TEMP/gradle-cache.part."
+          ls -lh "$RUNNER_TEMP"/gradle-cache.part.*
 
       - name: Upload Gradle distribution
         uses: actions/upload-artifact@v4
@@ -150,10 +152,35 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      - name: Upload Gradle cache
+      - name: Upload Gradle cache part 00
         uses: actions/upload-artifact@v4
         with:
-          name: gradle-cache-jiqian
-          path: ${{ runner.temp }}/gradle-cache.tar
+          name: gradle-cache-jiqian-00
+          path: ${{ runner.temp }}/gradle-cache.part.00
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload Gradle cache part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-cache-jiqian-01
+          path: ${{ runner.temp }}/gradle-cache.part.01
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload Gradle cache part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-cache-jiqian-02
+          path: ${{ runner.temp }}/gradle-cache.part.02
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload Gradle cache part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-cache-jiqian-03
+          path: ${{ runner.temp }}/gradle-cache.part.03
+          if-no-files-found: ignore
           retention-days: 1
           compression-level: 0
